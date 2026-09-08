@@ -274,3 +274,28 @@ class TestSizeAwareLFUEviction:
         victims = eviction.select_victims(candidates, needed_bytes=500, current_token=0)
         # (0,1) has lower score (0.001) → evicted first
         assert victims[0] == (0, 1)
+
+
+class TestEvictionPolicySelection:
+    """config.eviction_policy used to be read nowhere — LFUExpertCache
+    always hardcoded plain LFU regardless of its value."""
+
+    def test_default_config_uses_plain_lfu(self, tm, config, metrics):
+        from memtier_moe.cache.lfu_cache import LFUExpertCache
+        from memtier_moe.cache.eviction import LFUEviction
+
+        cache = LFUExpertCache(tm, config, metrics)
+        assert isinstance(cache.eviction_policy, LFUEviction)
+
+    def test_size_aware_lfu_selected_by_name(self, tm, metrics):
+        from memtier_moe.cache.lfu_cache import LFUExpertCache
+        from memtier_moe.cache.eviction import SizeAwareLFUEviction
+
+        cfg = MemTierConfig(
+            hbm_cache_budget_bytes=5000,
+            host_dram_bytes=50000,
+            cxl_memory_bytes=200000,
+            eviction_policy="size_aware_lfu",
+        )
+        cache = LFUExpertCache(tm, cfg, metrics)
+        assert isinstance(cache.eviction_policy, SizeAwareLFUEviction)

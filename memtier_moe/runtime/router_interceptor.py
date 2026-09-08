@@ -10,6 +10,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from memtier_moe.core.types import ExpertId
+from memtier_moe.introspect.gate_utils import extract_topk_routing
 from memtier_moe.prefetch.prefetch_scheduler import PrefetchScheduler
 
 logger = logging.getLogger(__name__)
@@ -86,15 +87,14 @@ class RouterInterceptor:
         """Create a forward hook that feeds routing to the scheduler."""
         def hook_fn(module: Any, inputs: Any, outputs: Any) -> None:
             try:
-                if isinstance(outputs, tuple) and len(outputs) >= 2:
-                    indices = outputs[1]  # top-k expert indices
-                    if HAS_TORCH and isinstance(indices, torch.Tensor):
-                        # indices shape: (batch_size, top_k)
-                        for row in indices:
-                            experts = row.detach().cpu().tolist()
-                            self.scheduler.on_routing_decision(
-                                layer_idx, experts
-                            )
+                _, indices = extract_topk_routing(outputs, self.top_k)
+                if HAS_TORCH and isinstance(indices, torch.Tensor):
+                    # indices shape: (batch_size, top_k)
+                    for row in indices:
+                        experts = row.detach().cpu().tolist()
+                        self.scheduler.on_routing_decision(
+                            layer_idx, experts
+                        )
             except Exception as e:
                 logger.warning(f"Hook error at layer {layer_idx}: {e}")
 

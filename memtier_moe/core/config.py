@@ -23,6 +23,13 @@ class MemTierConfig:
     num_experts_per_layer: int = 60
     num_shared_experts: int = 4
 
+    # Eviction destination policy (memory/placement.py): when an expert is
+    # evicted from HBM, experts at/above this decayed frequency are kept in
+    # DRAM (likely to be reused soon); colder ones go to CXL. Reserve a
+    # fraction of DRAM so CXL->DRAM promotions always have headroom.
+    placement_warm_threshold: float = 1.0
+    dram_reserve_fraction: float = 0.10
+
 RTX4050_PRESET = MemTierConfig()
 L40S_PRESET = MemTierConfig(
     gpu_vram_bytes=48_000_000_000,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from memtier_moe.core.config import MemTierConfig
 from memtier_moe.core.metrics import MetricsTracker
@@ -110,10 +110,26 @@ class TransferEngine:
         tier_manager: TierManager,
         config: MemTierConfig,
         metrics: MetricsTracker,
+        ensure_room_fn: Optional[Callable[[int], List[ExpertId]]] = None,
     ):
+        """
+        Args:
+            ensure_room_fn: Optional callback, typically
+                ``LFUExpertCache.make_room``, invoked with the incoming
+                expert's size right before it's stored into HBM in
+                ``wait_for``. An async transfer can reserve HBM space at
+                issue time (the prefetch scheduler does), but completion
+                happens later in the background — an intervening
+                demand-fetch can claim that space in between, so the store
+                needs its own fresh room check rather than trusting a
+                reservation made who-knows-how-long ago. Standalone tests
+                that construct a bare TransferEngine leave this ``None``
+                and get the old unconditional-store behavior.
+        """
         self.tier_manager = tier_manager
         self.config = config
         self.metrics = metrics
+        self._ensure_room_fn = ensure_room_fn
 
         # CUDA transfer stream (separate from default compute stream)
         self._transfer_stream = None
@@ -123,10 +139,18 @@ class TransferEngine:
         self._inflight: Dict[ExpertId, TransferHandle] = {}
         self._completed: Set[ExpertId] = set()
 
-        # Double-buffer: sized for the largest expert that might be
-        # transferred. Defaults to 64 MiB; the runtime can resize later.
+        # Double-buffer: exposed for callers that want the classic 2-slot
+        # ping-pong view of "the buffer being computed on" vs "the buffer
+        # receiving the next transfer" (see the `double_buffer` property).
+        # It is NOT used to stage in-flight tensors below — config allows
+        # up to `max_inflight_transfers` (default 4) concurrent async
+        # fetches, and a fixed 2-slot round-robin index collides once more
+        # than 2 are in flight: a 3rd/4th async_fetch would silently
+        # overwrite or clear a still-pending transfer's tensor. Staging is
+        # keyed by expert_id instead, which has no such capacity limit.
         self._double_buffer = DoubleBuffer(buffer_size_bytes=64 * 1024 * 1024)
-        self._next_buffer: int = 0  # round-robin across the two slots
+        self._next_buffer: int = 0  # cosmetic ping-pong role, see buffer_idx below
+        self._staged_tensors: Dict[ExpertId, Any] = {}
 
     # ── Public API ─────────────────────────────────────────────────────
 
@@ -194,8 +218,10 @@ class TransferEngine:
                 event = torch.cuda.Event()
                 event.record(self._transfer_stream)
 
-        # Stage in double-buffer
-        self._double_buffer.set_tensor(buf_idx, expert_id, tensor)
+        # Stage the tensor for wait_for()/poll_completed() to pick up. Keyed
+        # by expert_id (see __init__ note on why the 2-slot double_buffer
+        # itself isn't used here).
+        self._staged_tensors[expert_id] = tensor
 
         handle = TransferHandle(
             request=request,
@@ -225,16 +251,18 @@ class TransferEngine:
             handle.event.synchronize()
 
         # Finalize: evict from DRAM, promote into HBM pool
-        tensor = self._double_buffer.get_tensor(handle.buffer_idx)
-        self._double_buffer.clear(handle.buffer_idx)
+        tensor = self._staged_tensors.pop(expert_id, None)
 
         source_pool = self.tier_manager.get_pool(MemoryTier.DRAM)
         source_pool.evict(expert_id)
 
+        metadata = self.tier_manager.get_metadata(expert_id)
+        if self._ensure_room_fn is not None:
+            self._ensure_room_fn(metadata.size_bytes)
+
         hbm_pool = self.tier_manager.get_pool(MemoryTier.HBM)
         hbm_pool.store(expert_id, tensor)
 
-        metadata = self.tier_manager.get_metadata(expert_id)
         metadata.current_tier = MemoryTier.HBM
         metadata.transfer_state = TransferState.COMPLETE
 
@@ -276,7 +304,7 @@ class TransferEngine:
         if expert_id in self._inflight:
             handle = self._inflight.pop(expert_id)
             handle.request.state = TransferState.FAILED
-            self._double_buffer.clear(handle.buffer_idx)
+            self._staged_tensors.pop(expert_id, None)
 
             metadata = self.tier_manager.get_metadata(expert_id)
             metadata.transfer_state = TransferState.IDLE

@@ -124,23 +124,41 @@ class HBMPool(MemoryPool):
 
 
 class DRAMPool(MemoryPool):
-    """Host DRAM pool implementation with pinned memory support."""
-    
-    def __init__(self, capacity_bytes: int):
+    """Host DRAM pool implementation with pinned memory support.
+
+    Retrieval injects the tier's own access latency and applies a
+    bandwidth-limited transfer cost via a token bucket, mirroring
+    :class:`CXLPool`. Without this, DRAM hops were effectively free
+    (zero-cost dict lookups), which is not representative of a real
+    host-DRAM-to-HBM transfer over PCIe and made every offloading
+    baseline look artificially fast.
+    """
+
+    def __init__(
+        self,
+        capacity_bytes: int,
+        latency_ns: int = 100,
+        bandwidth_gbps: float = 16.0,
+    ):
         super().__init__(capacity_bytes, MemoryTier.DRAM)
         self._store: Dict[ExpertId, Any] = {}
         self._used_bytes: int = 0
+        self.latency_ns = latency_ns
+        self.bandwidth_gbps = bandwidth_gbps
+
+        from memtier_moe.core.latency import TokenBucketRateLimiter
+        self._rate_limiter = TokenBucketRateLimiter(bandwidth_gbps)
 
     def store(self, expert_id: ExpertId, tensor: Any) -> None:
         tensor_size = _tensor_size_bytes(tensor)
         if not self.available_for(tensor_size):
             raise RuntimeError(f"DRAM pool out of memory for expert {expert_id}")
-            
+
         if HAS_TORCH and isinstance(tensor, torch.Tensor):
             tensor = tensor.cpu()
             if torch.cuda.is_available():
                 tensor = tensor.pin_memory()
-                
+
         self._store[expert_id] = tensor
         self._used_bytes += tensor_size
         logger.debug(f"Stored expert {expert_id} in DRAM. Usage: {self._used_bytes}/{self.capacity_bytes}")
@@ -148,7 +166,13 @@ class DRAMPool(MemoryPool):
     def retrieve(self, expert_id: ExpertId) -> Any:
         if expert_id not in self._store:
             raise KeyError(f"Expert {expert_id} not found in DRAM pool")
-        return self._store[expert_id]
+
+        from memtier_moe.core.latency import inject_latency_ns
+        inject_latency_ns(self.latency_ns)
+
+        tensor = self._store[expert_id]
+        self._rate_limiter.acquire(_tensor_size_bytes(tensor))
+        return tensor
 
     def evict(self, expert_id: ExpertId) -> Optional[Any]:
         if expert_id not in self._store:

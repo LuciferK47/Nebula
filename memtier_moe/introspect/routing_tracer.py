@@ -7,6 +7,8 @@ import numpy as np
 import torch
 from collections import defaultdict
 
+from memtier_moe.introspect.gate_utils import extract_topk_routing
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -87,10 +89,27 @@ class RoutingTrace:
 class RoutingTracer:
     """Tracer to capture MoE routing decisions during inference."""
     
-    def __init__(self, model: torch.nn.Module, num_tokens: int = 1000) -> None:
-        """Initialize the tracer with a model."""
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        num_tokens: int = 1000,
+        top_k: int = 4,
+        tokenizer: Optional[Any] = None,
+    ) -> None:
+        """Initialize the tracer with a model.
+
+        Args:
+            model: The loaded MoE model to hook.
+            num_tokens: Default token budget for `trace_dataset`.
+            top_k: Experts selected per token, used to interpret raw gate
+                logits (see `introspect.gate_utils`).
+            tokenizer: Required only for `trace_dataset`, e.g.
+                `AutoTokenizer.from_pretrained(model_name)`.
+        """
         self.model = model
         self.num_tokens = num_tokens
+        self.top_k = top_k
+        self.tokenizer = tokenizer
         self.gate_modules = self._find_gate_modules(model)
         self.hooks: List[Any] = []
         self.decisions: List[RoutingDecision] = []
@@ -109,20 +128,22 @@ class RoutingTracer:
     def _hook_fn(self, layer_idx: int) -> Callable:
         """Create a hook function for a specific layer."""
         def hook(module: torch.nn.Module, inputs: Tuple, outputs: Tuple) -> None:
-            if isinstance(outputs, tuple) and len(outputs) >= 2:
-                weights = outputs[0]
-                indices = outputs[1]
-                
-                weights_np = weights.detach().cpu().numpy()
-                indices_np = indices.detach().cpu().numpy()
-                
-                for i in range(weights_np.shape[0]):
-                    self.decisions.append(RoutingDecision(
-                        token_idx=self.token_offset + i,
-                        layer_idx=layer_idx,
-                        top_k_expert_ids=indices_np[i].tolist(),
-                        gating_weights=weights_np[i].tolist()
-                    ))
+            try:
+                weights, indices = extract_topk_routing(outputs, self.top_k)
+            except (TypeError, RuntimeError) as e:
+                logger.warning(f"Hook at layer {layer_idx} could not parse gate output: {e}")
+                return
+
+            weights_np = weights.detach().cpu().numpy()
+            indices_np = indices.detach().cpu().numpy()
+
+            for i in range(weights_np.shape[0]):
+                self.decisions.append(RoutingDecision(
+                    token_idx=self.token_offset + i,
+                    layer_idx=layer_idx,
+                    top_k_expert_ids=indices_np[i].tolist(),
+                    gating_weights=weights_np[i].tolist()
+                ))
         return hook
         
     def _register_hooks(self) -> None:
@@ -152,7 +173,35 @@ class RoutingTracer:
         )
         return trace
         
-    def trace_dataset(self, dataset_name: str = 'wikitext', split: str = 'test', max_tokens: int = 1000) -> RoutingTrace:
-        """Convenience method to trace on a dataset."""
-        logger.info(f"Tracing dataset {dataset_name} split {split} max_tokens {max_tokens}")
-        return RoutingTrace(self.model.__class__.__name__, max_tokens, len(self.gate_modules))
+    def trace_dataset(
+        self,
+        dataset_name: str = 'wikitext',
+        config_name: str = 'wikitext-2-raw-v1',
+        split: str = 'test',
+        max_tokens: int = 1000,
+    ) -> RoutingTrace:
+        """Tokenize a HF `datasets` split and trace routing over it.
+
+        Requires a tokenizer to have been passed to `__init__` — without
+        one there is no way to turn dataset text into `input_ids`, so this
+        raises rather than silently returning an empty trace (the previous
+        behavior, which looked like a successful trace with zero decisions).
+        """
+        if self.tokenizer is None:
+            raise ValueError(
+                "trace_dataset() requires a tokenizer. Pass tokenizer=AutoTokenizer."
+                "from_pretrained(model_name) to RoutingTracer(), or call trace(input_ids) "
+                "directly with pre-tokenized input."
+            )
+
+        from datasets import load_dataset
+
+        logger.info(f"Loading dataset {dataset_name}/{config_name} split={split}")
+        ds = load_dataset(dataset_name, config_name, split=split)
+        text = "\n\n".join(t for t in ds["text"] if t.strip())
+
+        encoded = self.tokenizer(
+            text, return_tensors="pt", truncation=True, max_length=max_tokens
+        )
+        logger.info(f"Tracing {encoded['input_ids'].numel()} tokens from {dataset_name}")
+        return self.trace(encoded["input_ids"])

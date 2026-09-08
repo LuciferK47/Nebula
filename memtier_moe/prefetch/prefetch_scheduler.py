@@ -14,6 +14,7 @@ from typing import Dict, List, Set
 from memtier_moe.core.types import ExpertId, MemoryTier
 from memtier_moe.core.config import MemTierConfig
 from memtier_moe.core.metrics import MetricsTracker
+from memtier_moe.cache.lfu_cache import LFUExpertCache
 from memtier_moe.memory.transfer_engine import TransferEngine
 from memtier_moe.memory.tier_manager import TierManager
 from memtier_moe.prefetch.predictor import ExpertPredictor, Prediction
@@ -32,6 +33,13 @@ class PrefetchScheduler:
         The engine that actually moves data between tiers.
     tier_manager : TierManager
         For checking current expert locations.
+    cache : LFUExpertCache
+        The HBM cache. Without a reference here, a completed prefetch had
+        no way to register itself as cached — ``cache.lookup()`` kept
+        reporting a miss for an expert that had *already* been transferred
+        into HBM in the background, defeating the entire point of
+        prefetching, and the demand-fetch path would then race a second,
+        redundant transfer against the still-in-flight one.
     config : MemTierConfig
         System configuration (max inflight, etc.).
     metrics : MetricsTracker
@@ -43,12 +51,14 @@ class PrefetchScheduler:
         predictor: ExpertPredictor,
         transfer_engine: TransferEngine,
         tier_manager: TierManager,
+        cache: LFUExpertCache,
         config: MemTierConfig,
         metrics: MetricsTracker,
     ) -> None:
         self.predictor = predictor
         self.transfer_engine = transfer_engine
         self.tier_manager = tier_manager
+        self.cache = cache
         self.config = config
         self.metrics = metrics
 
@@ -109,10 +119,15 @@ class PrefetchScheduler:
             if meta.current_tier == MemoryTier.HBM:
                 continue
 
+            # Reserve HBM space now, at issue time, so the transfer has
+            # somewhere to land when it completes later in the background
+            # (poll_and_complete → wait_for). Without this, a completed
+            # prefetch could find HBM full and crash instead of evicting.
+            self.cache.make_room(meta.size_bytes)
             self.transfer_engine.async_fetch(eid)
             self._prefetched.add(eid)
             self._prefetch_count += 1
-            self.metrics.record_prefetch(useful=False)  # assume wasted; correct later
+            self.metrics.counters["prefetch_issued"] += 1
             prefetched.append(eid)
 
             logger.debug(
@@ -131,13 +146,28 @@ class PrefetchScheduler:
             self._prefetched.discard(expert_id)
             self._useful_count += 1
             self.predictor.record_access(expert_id)
-            # Correct the "wasted" counter: we initially recorded as wasted
-            # so net correction is: useful +1, wasted -1
-            # (The MetricsTracker already has the record; we track separately)
 
     def poll_and_complete(self) -> List[ExpertId]:
-        """Poll transfer engine for completed prefetches."""
-        return self.transfer_engine.poll_completed()
+        """Poll the transfer engine for completed prefetches, register each
+        as cached (this is the step that used to be missing entirely — a
+        completed prefetch never became a cache hit), and resync
+        MetricsTracker's useful/wasted counters with this scheduler's own
+        tally.
+
+        The useful/wasted split isn't known at issue time — a prefetch is
+        only "wasted" once we know it was never subsequently accessed,
+        which ``self.prefetch_precision`` already derives correctly from
+        ``_prefetch_count`` and ``_useful_count``. This mirrors that same
+        derivation into ``MetricsTracker`` so ``engine.report()`` agrees
+        with ``scheduler.stats()`` instead of the counters living their
+        own, permanently-zero life.
+        """
+        done = self.transfer_engine.poll_completed()
+        for eid in done:
+            self.cache.insert(eid)
+        self.metrics.counters["prefetch_useful"] = self._useful_count
+        self.metrics.counters["prefetch_wasted"] = self._wasted_remaining
+        return done
 
     @property
     def prefetch_precision(self) -> float:

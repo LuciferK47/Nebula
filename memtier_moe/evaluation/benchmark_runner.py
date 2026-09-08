@@ -164,6 +164,7 @@ class BenchmarkRunner:
                 predictor=predictor,
                 transfer_engine=engine.transfer_engine,
                 tier_manager=engine.tier_manager,
+                cache=engine.cache,
                 config=config,
                 metrics=engine.metrics,
             )

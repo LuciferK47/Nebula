@@ -50,7 +50,11 @@ class TierManager:
         # Initialize all three pools
         self._pools: Dict[MemoryTier, MemoryPool] = {
             MemoryTier.HBM: HBMPool(config.hbm_cache_budget_bytes),
-            MemoryTier.DRAM: DRAMPool(config.host_dram_bytes),
+            MemoryTier.DRAM: DRAMPool(
+                capacity_bytes=config.host_dram_bytes,
+                latency_ns=config.dram_latency_ns,
+                bandwidth_gbps=config.pcie_bandwidth_gbps,
+            ),
             MemoryTier.CXL: CXLPool(
                 capacity_bytes=config.cxl_memory_bytes,
                 latency_ns=config.cxl_latency_ns,
@@ -133,6 +137,12 @@ class TierManager:
         """Demote an expert one tier downward (HBM→DRAM or DRAM→CXL).
 
         Returns the tensor after it has been moved.
+
+        Raises RuntimeError if the target tier has no room, rather than
+        silently dropping the tensor on the floor (it has already been
+        evicted from the source pool at that point, so swallowing the
+        error would leave the expert nowhere — corrupting tier_manager
+        state without a trace).
         """
         metadata = self.get_metadata(expert_id)
         current_tier = metadata.current_tier
@@ -142,16 +152,37 @@ class TierManager:
             logger.warning(f"Cannot demote {expert_id} — already at lowest tier (CXL)")
             return None
 
+        return self.demote_to(expert_id, target_tier)
+
+    def demote_to(self, expert_id: ExpertId, target_tier: MemoryTier) -> Optional[Any]:
+        """Move an expert directly to *target_tier*, which need not be
+        adjacent to its current tier (e.g. HBM straight to CXL).
+
+        Used by the eviction placement policy (cache/placement.py), which
+        decides per-expert whether a cold eviction from HBM should land in
+        DRAM or skip straight to CXL, and by :meth:`demote` for the
+        single-hop case.
+        """
+        metadata = self.get_metadata(expert_id)
+        current_tier = metadata.current_tier
+        if current_tier == target_tier:
+            return None
+
         current_pool = self.get_pool(current_tier)
+        target_pool = self.get_pool(target_tier)
+
+        if not target_pool.available_for(metadata.size_bytes):
+            raise RuntimeError(
+                f"Cannot demote {expert_id} from {current_tier} to {target_tier}: "
+                f"target tier full ({target_pool.usage_bytes()}/{target_pool.capacity_bytes} bytes used, "
+                f"need {metadata.size_bytes})."
+            )
+
         tensor = current_pool.evict(expert_id)
+        if tensor is None:
+            raise RuntimeError(f"Expert {expert_id} not found in source pool {current_tier}")
 
-        if tensor is not None:
-            target_pool = self.get_pool(target_tier)
-            if target_pool.available_for(metadata.size_bytes):
-                target_pool.store(expert_id, tensor)
-            else:
-                logger.warning(f"Target tier {target_tier} full when demoting {expert_id}")
-
+        target_pool.store(expert_id, tensor)
         metadata.current_tier = target_tier
         self.metrics.record_demotion()
         logger.info(f"Demoted {expert_id} from {current_tier} to {target_tier}")
