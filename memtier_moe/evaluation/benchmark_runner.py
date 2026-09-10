@@ -175,9 +175,15 @@ class BenchmarkRunner:
         for token_idx in range(num_tokens):
             engine.metrics.record_token()
             for layer_idx, experts in enumerate(routing_decisions[token_idx]):
+                # Drain transfers completed since previous layer so prefetched
+                # experts become resident in cache before this layer accesses them
+                if scheduler is not None:
+                    scheduler.poll_and_complete()
+
                 # Feed prefetcher before processing
                 if scheduler is not None:
-                    scheduler.on_routing_decision(layer_idx, experts)
+                    pinned_set = {(layer_idx, exp_idx) for exp_idx in experts}
+                    scheduler.on_routing_decision(layer_idx, experts, pinned=pinned_set)
 
                 # Process layer
                 engine.forward_moe_layer(layer_idx, None, experts)
@@ -187,7 +193,7 @@ class BenchmarkRunner:
                     for exp_idx in experts:
                         scheduler.on_expert_accessed((layer_idx, exp_idx))
 
-            # Between tokens: poll prefetch completions
+            # Between tokens: final drain of any remaining completions
             if scheduler is not None:
                 scheduler.poll_and_complete()
 

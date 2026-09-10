@@ -134,7 +134,7 @@ class RoutingTracer:
                 logger.warning(f"Hook at layer {layer_idx} could not parse gate output: {e}")
                 return
 
-            weights_np = weights.detach().cpu().numpy()
+            weights_np = weights.detach().float().cpu().numpy()
             indices_np = indices.detach().cpu().numpy()
 
             for i in range(weights_np.shape[0]):

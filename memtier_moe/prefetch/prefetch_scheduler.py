@@ -9,7 +9,7 @@ Sits between the predictor and the transfer engine.  Responsibilities:
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from memtier_moe.core.types import ExpertId, MemoryTier
 from memtier_moe.core.config import MemTierConfig
@@ -72,6 +72,7 @@ class PrefetchScheduler:
         self,
         layer_idx: int,
         selected_experts: List[int],
+        pinned: Optional[Set[ExpertId]] = None,
     ) -> List[ExpertId]:
         """Called after each layer's routing decision.
 
@@ -84,16 +85,34 @@ class PrefetchScheduler:
             The layer that just made its routing decision.
         selected_experts : list[int]
             Expert indices chosen by the router at this layer.
+        pinned : set of ExpertId, optional
+            Experts currently active and protected from eviction.
 
         Returns
         -------
         List of ExpertIds for which prefetch was initiated.
         """
+        # Protect active experts of the current layer from eviction
+        pinned_set: Set[ExpertId] = set(pinned) if pinned is not None else set()
+        for exp_idx in selected_experts:
+            pinned_set.add((layer_idx, exp_idx))
+
         # Determine what's already in HBM
         hbm_experts = set(self.tier_manager.experts_in_tier(MemoryTier.HBM))
         inflight = {
             eid for eid in self.transfer_engine._inflight
         }
+
+        # Calculate space required for current layer's un-resident demand experts
+        needed_by_current = sum(
+            self.tier_manager.get_metadata(eid).size_bytes
+            for eid in pinned_set
+            if eid in self.tier_manager._registry
+            and self.tier_manager.get_metadata(eid).current_tier != MemoryTier.HBM
+        )
+
+        hbm_pool = self.tier_manager.get_pool(MemoryTier.HBM)
+        max_prefetches = getattr(self.config, "max_prefetches_per_decision", 2)
 
         # Get predictions
         predictions = self.predictor.predict(
@@ -103,14 +122,66 @@ class PrefetchScheduler:
             inflight=inflight,
         )
 
-        # Submit prefetches (bounded by available transfer slots)
+        # Submit prefetches (bounded by available transfer slots, headroom, and limits)
+        prefetched = self._issue_prefetches(predictions, pinned_set, needed_by_current)
+
+        # Flush stale predictions from past layers
+        self.predictor.flush_stale(layer_idx)
+
+        return prefetched
+
+    def on_lookahead_decision(
+        self,
+        current_layer: int,
+        target_layer: int,
+        predicted_experts: List[int],
+        pinned: Optional[Set[ExpertId]] = None,
+    ) -> List[ExpertId]:
+        """Schedule prefetching for upcoming layer based on lookahead pre-gating."""
+        pinned_set: Set[ExpertId] = set(pinned) if pinned is not None else set()
+        hbm_experts = set(self.tier_manager.experts_in_tier(MemoryTier.HBM))
+        inflight = set(self.transfer_engine._inflight)
+
+        needed_by_current = sum(
+            self.tier_manager.get_metadata(eid).size_bytes
+            for eid in pinned_set
+            if eid in self.tier_manager._registry
+            and self.tier_manager.get_metadata(eid).current_tier != MemoryTier.HBM
+        )
+
+        predictions = [
+            Prediction(
+                expert_id=(target_layer, exp_idx),
+                confidence=0.85,
+                source_layer=current_layer,
+                target_layer=target_layer,
+            )
+            for exp_idx in predicted_experts
+            if (target_layer, exp_idx) not in hbm_experts and (target_layer, exp_idx) not in inflight
+        ]
+
+        prefetched = self._issue_prefetches(predictions, pinned_set, needed_by_current)
+        self.predictor.flush_stale(current_layer)
+        return prefetched
+
+    def _issue_prefetches(
+        self,
+        predictions: List[Prediction],
+        pinned_set: Set[ExpertId],
+        needed_by_current: int,
+    ) -> List[ExpertId]:
+        """Internal helper to validate headroom and submit async prefetch requests."""
+        hbm_pool = self.tier_manager.get_pool(MemoryTier.HBM)
+        max_prefetches = getattr(self.config, "max_prefetches_per_decision", 2)
         prefetched: List[ExpertId] = []
+
         for pred in predictions:
+            if len(prefetched) >= max_prefetches:
+                break
             if not self.transfer_engine.can_accept_transfer():
                 break
 
             eid = pred.expert_id
-            # Verify expert is registered and not in HBM
             try:
                 meta = self.tier_manager.get_metadata(eid)
             except KeyError:
@@ -119,11 +190,19 @@ class PrefetchScheduler:
             if meta.current_tier == MemoryTier.HBM:
                 continue
 
-            # Reserve HBM space now, at issue time, so the transfer has
-            # somewhere to land when it completes later in the background
-            # (poll_and_complete → wait_for). Without this, a completed
-            # prefetch could find HBM full and crash instead of evicting.
-            self.cache.make_room(meta.size_bytes)
+            free_after_current = hbm_pool.free_bytes() - needed_by_current
+            if free_after_current < meta.size_bytes:
+                evictable_bytes = sum(
+                    ce.metadata.size_bytes
+                    for ce in self.cache._cache.values()
+                    if ce.expert_id not in pinned_set
+                )
+                if evictable_bytes + free_after_current < int(meta.size_bytes * 1.5):
+                    continue
+                if pred.confidence < max(0.20, self.config.prefetch_confidence_threshold):
+                    continue
+
+            self.cache.make_room(meta.size_bytes, pinned=pinned_set)
             self.transfer_engine.async_fetch(eid)
             self._prefetched.add(eid)
             self._prefetch_count += 1
@@ -134,9 +213,6 @@ class PrefetchScheduler:
                 f"Prefetch scheduled: {eid} (conf={pred.confidence:.3f}, "
                 f"target_layer={pred.target_layer})"
             )
-
-        # Flush stale predictions from past layers
-        self.predictor.flush_stale(layer_idx)
 
         return prefetched
 

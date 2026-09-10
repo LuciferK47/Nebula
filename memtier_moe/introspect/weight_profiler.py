@@ -249,7 +249,7 @@ class WeightProfiler:
         
     def _parse_expert_key(self, key: str) -> Optional[Tuple[int, int, str]]:
         """Parse expert parameter key to extract indices and name."""
-        pattern = r"model\.layers\.(\d+).*experts\.(\d+)\.(\w+)\.weight"
+        pattern = r"model\.layers\.(\d+).*experts\.(\d+)\.(\w+)\.(weight|qweight|qzeros|scales)"
         match = re.search(pattern, key)
         if match:
             return (int(match.group(1)), int(match.group(2)), match.group(3))

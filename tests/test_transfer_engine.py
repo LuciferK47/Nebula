@@ -20,13 +20,13 @@ class FakeTensor:
     def numel(self):
         return self._size
 
-    def cpu(self):
+    def cpu(self, *args, **kwargs):
         return self
 
-    def cuda(self):
+    def cuda(self, *args, **kwargs):
         return self
 
-    def pin_memory(self):
+    def pin_memory(self, *args, **kwargs):
         return self
 
 

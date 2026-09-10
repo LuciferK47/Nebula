@@ -198,7 +198,7 @@ def plot_throughput_comparison(
 
 
 def plot_expert_heatmap(
-    activation_matrix: np.ndarray,
+    activation_matrix: Any,
     output_path: str = "expert_heatmap.png",
     title: str = "Expert Activation Frequency",
     num_experts_shown: int = 30,
@@ -207,19 +207,36 @@ def plot_expert_heatmap(
 
     Parameters
     ----------
-    activation_matrix : np.ndarray
-        Shape: (num_layers, num_experts). Values are activation counts.
+    activation_matrix : np.ndarray or RoutingTrace
+        Shape: (num_layers, num_experts) or RoutingTrace object.
     num_experts_shown : int
         Only show the top-N most active experts (for readability).
     """
     _check_matplotlib()
+
+    if hasattr(activation_matrix, "decisions"):
+        trace = activation_matrix
+        max_exp = 0
+        for d in trace.decisions:
+            if d.top_k_expert_ids:
+                max_exp = max(max_exp, max(d.top_k_expert_ids))
+        actual_num_experts = max_exp + 1
+        mat = np.zeros((trace.num_layers, actual_num_experts), dtype=int)
+        for d in trace.decisions:
+            for eid in d.top_k_expert_ids:
+                mat[d.layer_idx, eid] += 1
+        activation_matrix = mat
+        num_experts_shown = min(num_experts_shown, actual_num_experts)
+    else:
+        num_experts_shown = min(num_experts_shown, activation_matrix.shape[1])
 
     # Select top experts by total activation
     total_per_expert = activation_matrix.sum(axis=0)
     top_indices = np.argsort(total_per_expert)[-num_experts_shown:][::-1]
     subset = activation_matrix[:, top_indices]
 
-    fig, ax = plt.subplots(figsize=(14, 8))
+    fig_height = 5 if num_experts_shown <= 8 else 8
+    fig, ax = plt.subplots(figsize=(12, fig_height))
     im = ax.imshow(
         subset.T,
         aspect="auto",
@@ -227,11 +244,11 @@ def plot_expert_heatmap(
         interpolation="nearest",
     )
 
-    ax.set_xlabel("Layer Index")
-    ax.set_ylabel(f"Expert Index (top {num_experts_shown})")
-    ax.set_title(title)
+    ax.set_xlabel("Layer Index", fontsize=11, fontweight="bold")
+    ax.set_ylabel(f"Expert Index (top {num_experts_shown})", fontsize=11, fontweight="bold")
+    ax.set_title(title, fontsize=13, fontweight="bold")
     ax.set_yticks(range(len(top_indices)))
-    ax.set_yticklabels([str(i) for i in top_indices], fontsize=7)
+    ax.set_yticklabels([str(i) for i in top_indices], fontsize=9, fontweight="bold")
 
     fig.colorbar(im, ax=ax, label="Activation Count", shrink=0.8)
 

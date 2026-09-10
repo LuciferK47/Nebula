@@ -108,23 +108,14 @@ class LFUExpertCache:
         pool = self.tier_manager.get_pool(MemoryTier.HBM)
         return pool.retrieve(expert_id)
 
-    def make_room(self, incoming_size: int) -> List[ExpertId]:
-        """Evict cached experts until HBM has room for `incoming_size` bytes.
-
-        Each victim is actually moved out of HBM (to DRAM or CXL, per
-        ``placement_policy``) via ``tier_manager.demote_to`` — not just
-        dropped from the cache index — so pool occupancy and cache state
-        never diverge. Must be called *before* fetching the incoming
-        expert into HBM, not after.
-
-        Returns:
-            List of evicted expert IDs, in eviction order.
-        """
+    def make_room(self, incoming_size: int, pinned: Optional[Set[ExpertId]] = None) -> List[ExpertId]:
+        """Evict cached experts until HBM has room for `incoming_size` bytes."""
         if self._hbm_pool.available_for(incoming_size):
             return []
 
         shortfall = incoming_size - self._hbm_pool.free_bytes()
-        candidates = [ce.metadata for ce in self._cache.values()]
+        pinned_set = pinned or set()
+        candidates = [ce.metadata for ce in self._cache.values() if ce.expert_id not in pinned_set]
         victims = self.eviction_policy.select_victims(
             candidates, shortfall, self._current_token
         )
@@ -153,33 +144,24 @@ class LFUExpertCache:
 
         return evicted
 
-    def ensure_resident(self, expert_id: ExpertId, transfer_engine: Any) -> bool:
+    def ensure_resident(
+        self,
+        expert_id: ExpertId,
+        transfer_engine: Any,
+        pinned: Optional[Set[ExpertId]] = None,
+    ) -> bool:
         """Guarantee `expert_id` is in HBM and registered as cached, fetching
-        it if necessary. This is the single coordination point for cache
-        misses — it exists because the demand-fetch path and the prefetch
-        path both want to bring an expert into HBM, and calling them
-        independently on the same expert raced: a demand-fetch could start
-        a second, redundant multi-hop transfer for an expert a prefetch was
-        already mid-transfer on, silently double-booking the HBM pool's
-        usage counter.
-
-        Args:
-            expert_id: The expert to ensure is resident.
-            transfer_engine: The TransferEngine to fetch through.
-
-        Returns:
-            True if it was already cached (no transfer needed), False if a
-            fetch (or a wait on an in-flight one) was performed.
+        it if necessary.
         """
         if expert_id in self._cache:
             return True
 
         meta = self.tier_manager.get_metadata(expert_id)
-        self.make_room(meta.size_bytes)
+        pinned_set = set(pinned) if pinned else set()
+        pinned_set.add(expert_id)
+        self.make_room(meta.size_bytes, pinned=pinned_set)
 
         if transfer_engine.is_inflight(expert_id):
-            # A prefetch already started this transfer — wait for it
-            # instead of racing a second one.
             transfer_engine.wait_for(expert_id)
         else:
             transfer_engine.demand_fetch(expert_id)

@@ -45,13 +45,40 @@ def extract_topk_routing(outputs: Any, top_k: int) -> Tuple["torch.Tensor", "tor
     if not HAS_TORCH:
         raise RuntimeError("torch is required to interpret gate outputs")
 
-    if isinstance(outputs, tuple) and len(outputs) >= 2:
-        return outputs[0], outputs[1]
+    if isinstance(outputs, tuple):
+        if len(outputs) >= 3 and outputs[2].dtype in (torch.int32, torch.int64):
+            # Mixtral style: (router_logits, router_scores, router_indices)
+            weights, indices = outputs[1], outputs[2]
+        elif len(outputs) >= 2 and outputs[1].dtype in (torch.int32, torch.int64):
+            # Standard: (weights, indices)
+            weights, indices = outputs[0], outputs[1]
+        elif len(outputs) >= 1 and isinstance(outputs[0], torch.Tensor) and outputs[0].is_floating_point():
+            logits = outputs[0]
+            probs = F.softmax(logits, dim=-1, dtype=torch.float32)
+            weights, indices = torch.topk(probs, top_k, dim=-1)
+        else:
+            weights, indices = outputs[0], outputs[1]
 
-    logits = outputs[0] if isinstance(outputs, tuple) else outputs
+        if hasattr(weights, "ndim") and weights.ndim > 2:
+            weights = weights.reshape(-1, top_k)
+            indices = indices.reshape(-1, top_k)
+        elif hasattr(weights, "ndim") and weights.ndim == 1:
+            weights = weights.unsqueeze(0)
+            indices = indices.unsqueeze(0)
+        return weights, indices
+
+    logits = outputs
     if not isinstance(logits, torch.Tensor):
         raise TypeError(f"Unrecognized gate output type: {type(logits)!r}")
 
     probs = F.softmax(logits, dim=-1, dtype=torch.float32)
     weights, indices = torch.topk(probs, top_k, dim=-1)
+
+    if weights.ndim > 2:
+        weights = weights.reshape(-1, top_k)
+        indices = indices.reshape(-1, top_k)
+    elif weights.ndim == 1:
+        weights = weights.unsqueeze(0)
+        indices = indices.unsqueeze(0)
+
     return weights, indices

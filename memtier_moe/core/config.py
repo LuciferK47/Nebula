@@ -16,6 +16,7 @@ class MemTierConfig:
     frequency_decay_half_life: int = 500
     eviction_policy: str = "lfu"
     max_inflight_transfers: int = 4
+    max_prefetches_per_decision: int = 2
     prefetch_confidence_threshold: float = 0.3
     prefetch_lookahead_layers: int = 2
     top_k_experts: int = 4

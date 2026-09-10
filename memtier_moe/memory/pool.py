@@ -17,10 +17,47 @@ logger = logging.getLogger(__name__)
 
 
 def _tensor_size_bytes(tensor: Any) -> int:
-    """Calculate tensor size in bytes using duck typing."""
+    """Calculate tensor or module size in bytes using duck typing."""
+    if HAS_TORCH and isinstance(tensor, torch.nn.Module):
+        param_bytes = sum(p.numel() * p.element_size() for p in tensor.parameters())
+        buffer_bytes = sum(b.numel() * b.element_size() for b in tensor.buffers())
+        return param_bytes + buffer_bytes
+    if hasattr(tensor, 'parameters') and callable(getattr(tensor, 'parameters')):
+        try:
+            return sum(p.numel() * p.element_size() for p in tensor.parameters())
+        except Exception:
+            pass
     if hasattr(tensor, 'element_size') and hasattr(tensor, 'numel'):
         return tensor.element_size() * tensor.numel()
     return 1024  # fallback for opaque objects
+
+
+def _move_to_device(tensor: Any, device: str, non_blocking: bool = False) -> Any:
+    """Move tensor, module, or placeholder to target device."""
+    if not HAS_TORCH:
+        return tensor
+    if isinstance(tensor, torch.nn.Module):
+        if device == "cuda":
+            if non_blocking:
+                for p in tensor.parameters():
+                    p.data = p.data.to(device="cuda", non_blocking=True)
+                for b in tensor.buffers():
+                    b.data = b.data.to(device="cuda", non_blocking=True)
+                return tensor
+            return tensor.cuda()
+        elif device == "cpu":
+            return tensor.cpu()
+    elif isinstance(tensor, torch.Tensor):
+        if device == "cuda":
+            return tensor.cuda(non_blocking=non_blocking) if torch.cuda.is_available() else tensor
+        elif device == "cpu":
+            return tensor.cpu()
+    elif hasattr(tensor, device):
+        try:
+            return getattr(tensor, device)(non_blocking=non_blocking)
+        except TypeError:
+            return getattr(tensor, device)()
+    return tensor
 
 class MemoryPool(ABC):
     """Abstract base class for a memory pool managing tensors in a specific tier."""
@@ -84,9 +121,7 @@ class HBMPool(MemoryPool):
         if not self.available_for(tensor_size):
             raise RuntimeError(f"HBM pool out of memory for expert {expert_id}")
             
-        if HAS_TORCH and isinstance(tensor, torch.Tensor):
-            if torch.cuda.is_available():
-                tensor = tensor.cuda()
+        tensor = _move_to_device(tensor, "cuda")
                 
         self._store[expert_id] = tensor
         self._used_bytes += tensor_size
@@ -154,10 +189,12 @@ class DRAMPool(MemoryPool):
         if not self.available_for(tensor_size):
             raise RuntimeError(f"DRAM pool out of memory for expert {expert_id}")
 
-        if HAS_TORCH and isinstance(tensor, torch.Tensor):
-            tensor = tensor.cpu()
-            if torch.cuda.is_available():
+        tensor = _move_to_device(tensor, "cpu")
+        if HAS_TORCH and isinstance(tensor, torch.Tensor) and torch.cuda.is_available():
+            try:
                 tensor = tensor.pin_memory()
+            except Exception:
+                pass
 
         self._store[expert_id] = tensor
         self._used_bytes += tensor_size
@@ -231,8 +268,7 @@ class CXLPool(MemoryPool):
         if not self.available_for(tensor_size):
             raise RuntimeError(f"CXL pool out of memory for expert {expert_id}")
 
-        if HAS_TORCH and isinstance(tensor, torch.Tensor):
-            tensor = tensor.cpu()
+        tensor = _move_to_device(tensor, "cpu")
 
         self._store[expert_id] = tensor
         self._used_bytes += tensor_size

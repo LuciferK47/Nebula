@@ -214,7 +214,18 @@ class TransferEngine:
         event = None
         if HAS_TORCH and torch.cuda.is_available() and self._transfer_stream is not None:
             with torch.cuda.stream(self._transfer_stream):
-                tensor = tensor.cuda(non_blocking=True)
+                if isinstance(tensor, torch.nn.Module):
+                    for p in tensor.parameters():
+                        p.data = p.data.to(device="cuda", non_blocking=True)
+                    for b in tensor.buffers():
+                        b.data = b.data.to(device="cuda", non_blocking=True)
+                elif isinstance(tensor, torch.Tensor):
+                    tensor = tensor.cuda(non_blocking=True)
+                elif hasattr(tensor, "cuda"):
+                    try:
+                        tensor = tensor.cuda(non_blocking=True)
+                    except TypeError:
+                        tensor = tensor.cuda()
                 event = torch.cuda.Event()
                 event.record(self._transfer_stream)
 

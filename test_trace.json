@@ -1,0 +1,73 @@
+
+{
+  "schemaVersion": 1,
+  "deviceProperties": [
+  ],
+  "trace_id": "C8300E6AE27643AE87BF3FAD15C2C32C",
+  "traceEvents": [
+  {
+    "ph": "X", "cat": "cpu_op", "name": "aten::matmul", "pid": 21728, "tid": 41108,
+    "ts": 6048306131940.090, "dur": 160089.400,
+    "args": {
+      "External id": 1,"Record function id": 0, "Sequence number": 0, "Ev Idx": 0, "Fwd thread id": 0
+    }
+  },
+  {
+    "ph": "X", "cat": "cpu_op", "name": "aten::mm", "pid": 21728, "tid": 41108,
+    "ts": 6048306131995.590, "dur": 159986.800,
+    "args": {
+      "External id": 2,"Record function id": 0, "Sequence number": 0, "Ev Idx": 1, "Fwd thread id": 0
+    }
+  },
+  {
+    "name": "thread_name", "ph": "M", "ts": 6048306112490.300, "pid": 21728, "tid": 41108,
+    "args": {
+      "name": "thread 41108 ()"
+    }
+  },
+  {
+    "name": "thread_sort_index", "ph": "M", "ts": 6048306112490.300, "pid": 21728, "tid": 41108,
+    "args": {
+      "sort_index": 41108
+    }
+  },
+  {
+    "name": "thread_name", "ph": "M", "ts": 6048306112490.300, "pid": 21728, "tid": 41108,
+    "args": {
+      "name": "thread 41108 ()"
+    }
+  },
+  {
+    "name": "thread_sort_index", "ph": "M", "ts": 6048306112490.300, "pid": 21728, "tid": 41108,
+    "args": {
+      "sort_index": 41108
+    }
+  },
+  {
+    "ph": "X", "cat": "Trace", "ts": 6048306112347.500, "dur": 179986.500,
+    "pid": "Spans", "tid": "PyTorch Profiler",
+    "name": "PyTorch Profiler (0)",
+    "args": {
+      "Op count": 0
+    }
+  },
+  {
+    "name": "process_sort_index", "ph": "M", "ts": 6048306112347.500,
+    "pid": "Spans", "tid": 0,
+    "args": {
+      "sort_index": 536870912
+    }
+  },
+  {
+    "name": "Iteration Start: PyTorch Profiler", "ph": "i", "s": "g",
+    "pid": "Traces", "tid": "Trace PyTorch Profiler", "ts": 6048306112347.500
+  },
+  {
+    "name": "Record Window End", "ph": "i", "s": "g",
+    "pid": "", "tid": "", "ts": 6048306292647.500
+  }
+  ],
+  "traceName": "test_trace.json",
+  "displayTimeUnit": "ms",
+  "baseTimeNanoseconds": 1782967788000000000
+}

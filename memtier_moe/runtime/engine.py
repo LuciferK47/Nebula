@@ -24,9 +24,9 @@ class _Placeholder:
         self._size = size_bytes
     def element_size(self): return 1
     def numel(self): return self._size
-    def cpu(self): return self
-    def cuda(self): return self
-    def pin_memory(self): return self
+    def cpu(self, *args, **kwargs): return self
+    def cuda(self, *args, **kwargs): return self
+    def pin_memory(self, *args, **kwargs): return self
 
 
 @dataclass
