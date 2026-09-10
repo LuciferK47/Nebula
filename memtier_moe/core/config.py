@@ -31,6 +31,12 @@ class MemTierConfig:
     placement_warm_threshold: float = 1.0
     dram_reserve_fraction: float = 0.10
 
+    # Adaptive prefetch gating: avoid speculative thrashing under memory pressure.
+    # When cache headroom is low, do not evict resident experts whose decayed frequency
+    # exceeds max_speculative_eviction_freq.
+    adaptive_prefetch_gating: bool = True
+    max_speculative_eviction_freq: float = 1.5
+
 RTX4050_PRESET = MemTierConfig()
 L40S_PRESET = MemTierConfig(
     gpu_vram_bytes=48_000_000_000,

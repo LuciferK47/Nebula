@@ -151,12 +151,14 @@ class TieredMoEBlock(nn.Module):
             with torch.no_grad():
                 nxt_gate_out = self.next_gate(flat_hidden)
                 from memtier_moe.introspect.gate_utils import extract_topk_routing
-                _, nxt_indices = extract_topk_routing(nxt_gate_out, self.top_k)
+                nxt_weights, nxt_indices = extract_topk_routing(nxt_gate_out, self.top_k)
                 lookahead_experts = [int(idx) for idx in nxt_indices[0]]
+                lookahead_confidences = [float(w) for w in nxt_weights[0]]
             self.scheduler.on_lookahead_decision(
                 current_layer=self.layer_idx,
                 target_layer=self.layer_idx + 1,
                 predicted_experts=lookahead_experts,
+                confidences=lookahead_confidences,
                 pinned=expert_ids_set,
             )
             self.scheduler.poll_and_complete()

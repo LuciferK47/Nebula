@@ -233,3 +233,102 @@ class TestDecayIsPerToken:
 
         freq_after = meta.decay_frequency(engine.cache._current_token, config.frequency_decay_half_life)
         assert freq_after == pytest.approx(freq_before * 0.5, rel=0.01)
+
+
+class TestAdaptivePrefetchGating:
+    """Verifies that adaptive prefetch gating suppresses speculative evictions
+    when all resident experts are frequently accessed (hot), avoiding cache thrashing."""
+
+    def test_hot_experts_guarded_from_speculative_eviction(self):
+        config = MemTierConfig(
+            hbm_cache_budget_bytes=200,  # Holds exactly 2 experts of size 100
+            host_dram_bytes=1000,
+            cxl_memory_bytes=1000,
+            adaptive_prefetch_gating=True,
+            max_speculative_eviction_freq=1.5,
+        )
+        engine = InferenceEngine(config)
+        sizes = {(0, 0): 100, (0, 1): 100, (1, 0): 100}
+        engine.setup_from_profile(sizes)
+
+        # Place (0, 0) and (0, 1) in HBM and simulate heavy access to make them hot
+        engine.tier_manager.promote((0, 0))
+        engine.tier_manager.promote((0, 1))
+        engine.cache.insert((0, 0))
+        engine.cache.insert((0, 1))
+
+        # Access both experts multiple times so their frequency is high
+        for _ in range(5):
+            engine.cache.record_accesses([(0, 0), (0, 1)])
+
+        from memtier_moe.prefetch.predictor import ExpertPredictor
+        from memtier_moe.prefetch.co_occurrence import CoOccurrenceModel
+        from memtier_moe.prefetch.prefetch_scheduler import PrefetchScheduler
+
+        predictor = ExpertPredictor(model=CoOccurrenceModel(), confidence_threshold=0.3)
+        scheduler = PrefetchScheduler(
+            predictor=predictor,
+            transfer_engine=engine.transfer_engine,
+            tier_manager=engine.tier_manager,
+            cache=engine.cache,
+            config=config,
+            metrics=engine.metrics,
+        )
+
+        # (1, 0) is speculative candidate for layer 1. HBM has 0 free bytes.
+        # Both (0, 0) and (0, 1) have access frequency 5 > 1.5.
+        prefetched = scheduler.on_lookahead_decision(
+            current_layer=0,
+            target_layer=1,
+            predicted_experts=[0],
+            confidences=[0.90],
+            pinned={(0, 0)},
+        )
+
+        # Pre-fetching (1, 0) should have been throttled to protect hot expert (0, 1)
+        assert len(prefetched) == 0
+        assert engine.tier_manager.get_tier((0, 1)) == MemoryTier.HBM
+
+    def test_cold_experts_allow_speculative_eviction(self):
+        config = MemTierConfig(
+            hbm_cache_budget_bytes=200,
+            host_dram_bytes=1000,
+            cxl_memory_bytes=1000,
+            adaptive_prefetch_gating=True,
+            max_speculative_eviction_freq=1.5,
+        )
+        engine = InferenceEngine(config)
+        sizes = {(0, 0): 100, (0, 1): 100, (1, 0): 100}
+        engine.setup_from_profile(sizes)
+
+        # Place (0, 0) and (0, 1) in HBM. (0, 1) is never accessed (freq = 0.0)
+        engine.tier_manager.promote((0, 0))
+        engine.tier_manager.promote((0, 1))
+        engine.cache.insert((0, 0))
+        engine.cache.insert((0, 1))
+
+        from memtier_moe.prefetch.predictor import ExpertPredictor
+        from memtier_moe.prefetch.co_occurrence import CoOccurrenceModel
+        from memtier_moe.prefetch.prefetch_scheduler import PrefetchScheduler
+
+        predictor = ExpertPredictor(model=CoOccurrenceModel(), confidence_threshold=0.3)
+        scheduler = PrefetchScheduler(
+            predictor=predictor,
+            transfer_engine=engine.transfer_engine,
+            tier_manager=engine.tier_manager,
+            cache=engine.cache,
+            config=config,
+            metrics=engine.metrics,
+        )
+
+        prefetched = scheduler.on_lookahead_decision(
+            current_layer=0,
+            target_layer=1,
+            predicted_experts=[0],
+            confidences=[0.90],
+            pinned={(0, 0)},
+        )
+
+        # Pre-fetching (1, 0) succeeds because (0, 1) is cold and can be evicted
+        assert (1, 0) in prefetched
+        assert engine.tier_manager.get_tier((0, 1)) != MemoryTier.HBM

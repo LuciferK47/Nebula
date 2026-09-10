@@ -9,8 +9,8 @@
     "misses": 0,
     "evictions": 0,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 8456.888471550572,
-    "wall_time_s": 0.11824680003337562
+    "tokens_per_second": 11.764705882352942,
+    "wall_time_s": 0.10931740002706647
   },
   {
     "baseline": "GPU-Resident",
@@ -22,8 +22,8 @@
     "misses": 0,
     "evictions": 0,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 8563.542772237553,
-    "wall_time_s": 0.11677409999538213
+    "tokens_per_second": 11.764705882352942,
+    "wall_time_s": 0.10380399995483458
   },
   {
     "baseline": "Two-Tier (HBM+DRAM)",
@@ -35,8 +35,8 @@
     "misses": 22273,
     "evictions": 22273,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 58.65061497898857,
-    "wall_time_s": 17.05011959990952
+    "tokens_per_second": 10.093940427624425,
+    "wall_time_s": 17.049973199958913
   },
   {
     "baseline": "Two-Tier (HBM+DRAM)",
@@ -48,8 +48,8 @@
     "misses": 19064,
     "evictions": 19064,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 69.52691543681301,
-    "wall_time_s": 14.382919099996798
+    "tokens_per_second": 10.331209986219376,
+    "wall_time_s": 14.382380399969406
   },
   {
     "baseline": "CXL-Only (no prefetch)",
@@ -61,8 +61,8 @@
     "misses": 22273,
     "evictions": 22273,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 58.65350841670977,
-    "wall_time_s": 17.04927850002423
+    "tokens_per_second": 10.104479356850746,
+    "wall_time_s": 17.050226300023496
   },
   {
     "baseline": "CXL-Only (no prefetch)",
@@ -74,34 +74,34 @@
     "misses": 19064,
     "evictions": 19064,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 69.53017950151339,
-    "wall_time_s": 14.382243899977766
+    "tokens_per_second": 10.340081581322922,
+    "wall_time_s": 14.381645600078627
   },
   {
     "baseline": "MemTier-MoE (full)",
     "baseline_type": "memtier_moe",
     "domain": "wikitext",
     "hbm_budget_gb": 0.6,
-    "hit_rate": 0.6493958333333333,
-    "hits": 31171,
-    "misses": 16829,
-    "evictions": 47596,
-    "prefetch_precision": 0.6391263366594078,
-    "tokens_per_second": 26.245604996318345,
-    "wall_time_s": 38.101617399952374
+    "hit_rate": 0.5470208333333333,
+    "hits": 26257,
+    "misses": 21743,
+    "evictions": 23608,
+    "prefetch_precision": 0.9506702412868633,
+    "tokens_per_second": 10.278845222454034,
+    "wall_time_s": 18.159738900023513
   },
   {
     "baseline": "MemTier-MoE (full)",
     "baseline_type": "memtier_moe",
     "domain": "code",
     "hbm_budget_gb": 0.6,
-    "hit_rate": 0.6813333333333333,
-    "hits": 32704,
-    "misses": 15296,
-    "evictions": 48662,
-    "prefetch_precision": 0.473356111011209,
-    "tokens_per_second": 25.650158676007166,
-    "wall_time_s": 38.98611359996721
+    "hit_rate": 0.6174375,
+    "hits": 29637,
+    "misses": 18363,
+    "evictions": 22638,
+    "prefetch_precision": 0.6814035087719298,
+    "tokens_per_second": 10.3615441958827,
+    "wall_time_s": 17.353527900064364
   },
   {
     "baseline": "GPU-Resident",
@@ -113,8 +113,8 @@
     "misses": 0,
     "evictions": 0,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 8794.873643513129,
-    "wall_time_s": 0.11370260000694543
+    "tokens_per_second": 11.764705882352942,
+    "wall_time_s": 0.11255979991983622
   },
   {
     "baseline": "GPU-Resident",
@@ -126,8 +126,8 @@
     "misses": 0,
     "evictions": 0,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 9284.085590094213,
-    "wall_time_s": 0.10771120002027601
+    "tokens_per_second": 11.764705882352942,
+    "wall_time_s": 0.10379349999129772
   },
   {
     "baseline": "Two-Tier (HBM+DRAM)",
@@ -139,8 +139,8 @@
     "misses": 10192,
     "evictions": 10192,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 142.52839297410014,
-    "wall_time_s": 7.016145900008269
+    "tokens_per_second": 11.071627546519503,
+    "wall_time_s": 7.018945600022562
   },
   {
     "baseline": "Two-Tier (HBM+DRAM)",
@@ -152,8 +152,8 @@
     "misses": 7562,
     "evictions": 7562,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 206.91583913336905,
-    "wall_time_s": 4.8328828000230715
+    "tokens_per_second": 11.286202000590425,
+    "wall_time_s": 4.8390156999230385
   },
   {
     "baseline": "CXL-Only (no prefetch)",
@@ -165,8 +165,8 @@
     "misses": 10192,
     "evictions": 10192,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 142.55101861699748,
-    "wall_time_s": 7.015032300027087
+    "tokens_per_second": 11.067965917586259,
+    "wall_time_s": 7.022382399998605
   },
   {
     "baseline": "CXL-Only (no prefetch)",
@@ -178,33 +178,33 @@
     "misses": 7562,
     "evictions": 7562,
     "prefetch_precision": 0.0,
-    "tokens_per_second": 206.80006166691902,
-    "wall_time_s": 4.835588500020094
+    "tokens_per_second": 11.30205923799875,
+    "wall_time_s": 4.838115599937737
   },
   {
     "baseline": "MemTier-MoE (full)",
     "baseline_type": "memtier_moe",
     "domain": "wikitext",
     "hbm_budget_gb": 0.9,
-    "hit_rate": 0.8568125,
-    "hits": 41127,
-    "misses": 6873,
-    "evictions": 24575,
-    "prefetch_precision": 0.5329906225285278,
-    "tokens_per_second": 52.7132692555799,
-    "wall_time_s": 18.97055550001096
+    "hit_rate": 0.796375,
+    "hits": 38226,
+    "misses": 9774,
+    "evictions": 11242,
+    "prefetch_precision": 0.8337874659400545,
+    "tokens_per_second": 11.258915310968693,
+    "wall_time_s": 7.8877500999951735
   },
   {
     "baseline": "MemTier-MoE (full)",
     "baseline_type": "memtier_moe",
     "domain": "code",
     "hbm_budget_gb": 0.9,
-    "hit_rate": 0.871125,
-    "hits": 41814,
-    "misses": 6186,
-    "evictions": 26171,
-    "prefetch_precision": 0.3158368776582437,
-    "tokens_per_second": 49.28278200600324,
-    "wall_time_s": 20.291062299977057
+    "hit_rate": 0.8488541666666667,
+    "hits": 40745,
+    "misses": 7255,
+    "evictions": 11376,
+    "prefetch_precision": 0.5248726037369571,
+    "tokens_per_second": 11.302300879012558,
+    "wall_time_s": 8.010226399987005
   }
 ]

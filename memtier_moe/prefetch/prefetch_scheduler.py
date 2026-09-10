@@ -135,6 +135,7 @@ class PrefetchScheduler:
         current_layer: int,
         target_layer: int,
         predicted_experts: List[int],
+        confidences: Optional[List[float]] = None,
         pinned: Optional[Set[ExpertId]] = None,
     ) -> List[ExpertId]:
         """Schedule prefetching for upcoming layer based on lookahead pre-gating."""
@@ -149,16 +150,20 @@ class PrefetchScheduler:
             and self.tier_manager.get_metadata(eid).current_tier != MemoryTier.HBM
         )
 
-        predictions = [
-            Prediction(
-                expert_id=(target_layer, exp_idx),
-                confidence=0.85,
-                source_layer=current_layer,
-                target_layer=target_layer,
+        predictions = []
+        for i, exp_idx in enumerate(predicted_experts):
+            if (target_layer, exp_idx) in hbm_experts or (target_layer, exp_idx) in inflight:
+                continue
+            conf = confidences[i] if confidences is not None and i < len(confidences) else 0.85
+            predictions.append(
+                Prediction(
+                    expert_id=(target_layer, exp_idx),
+                    confidence=conf,
+                    source_layer=current_layer,
+                    target_layer=target_layer,
+                )
             )
-            for exp_idx in predicted_experts
-            if (target_layer, exp_idx) not in hbm_experts and (target_layer, exp_idx) not in inflight
-        ]
+        predictions.sort(key=lambda p: p.confidence, reverse=True)
 
         prefetched = self._issue_prefetches(predictions, pinned_set, needed_by_current)
         self.predictor.flush_stale(current_layer)
@@ -197,10 +202,31 @@ class PrefetchScheduler:
                     for ce in self.cache._cache.values()
                     if ce.expert_id not in pinned_set
                 )
-                if evictable_bytes + free_after_current < int(meta.size_bytes * 1.5):
+                if evictable_bytes + free_after_current < meta.size_bytes:
                     continue
                 if pred.confidence < max(0.20, self.config.prefetch_confidence_threshold):
                     continue
+
+                # Adaptive Prefetch Gating:
+                # Under memory pressure where free headroom is deficient, avoid speculative thrashing!
+                # Guard experts that were accessed in the current token or have above-median frequency.
+                if getattr(self.config, "adaptive_prefetch_gating", True):
+                    candidates = [ce.metadata for ce in self.cache._cache.values() if ce.expert_id not in pinned_set]
+                    if not candidates:
+                        continue
+                    current_tok = getattr(self.cache, "_current_token", 0)
+                    half_life = getattr(getattr(self.cache, "eviction_policy", None), "half_life", 500)
+                    candidates_sorted = sorted(candidates, key=lambda m: m.decay_frequency(current_tok, half_life))
+                    prime_victim = candidates_sorted[0]
+                    victim_freq = prime_victim.decay_frequency(current_tok, half_life)
+                    median_freq = candidates_sorted[len(candidates_sorted) // 2].decay_frequency(current_tok, half_life)
+
+                    if (prime_victim.last_access_token == current_tok and prime_victim.raw_count > 0) or (victim_freq > 2.0 and victim_freq >= median_freq):
+                        logger.debug(
+                            f"Adaptive prefetch throttled: victim {prime_victim.expert_id} is active/hot "
+                            f"(freq={victim_freq:.2f}, median={median_freq:.2f}). Preserving cache."
+                        )
+                        continue
 
             self.cache.make_room(meta.size_bytes, pinned=pinned_set)
             self.transfer_engine.async_fetch(eid)
