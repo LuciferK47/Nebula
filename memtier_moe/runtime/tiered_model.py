@@ -72,7 +72,6 @@ class TieredMoEBlock(nn.Module):
         self.hbm_experts = []
         self.dram_experts = []
 
-        dram_pool = self.engine.tier_manager.get_pool(MemoryTier.DRAM)
         for exp_idx in range(self.num_experts):
             eid = (self.layer_idx, exp_idx)
             meta = self.engine.tier_manager.get_metadata(eid)
@@ -84,9 +83,8 @@ class TieredMoEBlock(nn.Module):
                 self.hbm_experts.append(mod)
                 self.dram_experts.append(None)
             else:
-                mod = dram_pool._store.get(eid)
-                if mod is None:
-                    mod = self.engine.cache.get_weights(eid)
+                pool = self.engine.tier_manager.get_pool(meta.current_tier)
+                mod = pool._store.get(eid)
                 self.hbm_experts.append(None)
                 self.dram_experts.append(mod)
 

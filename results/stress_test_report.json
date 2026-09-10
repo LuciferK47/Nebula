@@ -1,0 +1,155 @@
+{
+  "device": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "model": "nopainkiller/Qwen1.5-4x0.5B-MoE",
+  "timestamp": "2026-09-10 13:37:59",
+  "test_results": {
+    "case_1_extreme_memory_pressure": {
+      "status": "PASS",
+      "details": [
+        {
+          "budget_mb": 300,
+          "status": "PASS",
+          "throughput_tok_s": 6.83,
+          "hit_rate": 0.3152,
+          "hits": 393,
+          "misses": 854,
+          "evictions": 0,
+          "peak_vram_mb": 3845.2
+        },
+        {
+          "budget_mb": 600,
+          "status": "PASS",
+          "throughput_tok_s": 9.49,
+          "hit_rate": 0.5084,
+          "hits": 634,
+          "misses": 613,
+          "evictions": 0,
+          "peak_vram_mb": 4166.2
+        },
+        {
+          "budget_mb": 900,
+          "status": "PASS",
+          "throughput_tok_s": 10.84,
+          "hit_rate": 0.5974,
+          "hits": 745,
+          "misses": 502,
+          "evictions": 0,
+          "peak_vram_mb": 4477.6
+        },
+        {
+          "budget_mb": 1500,
+          "status": "PASS",
+          "throughput_tok_s": 14.87,
+          "hit_rate": 0.9912,
+          "hits": 1236,
+          "misses": 11,
+          "evictions": 0,
+          "peak_vram_mb": 4789.0
+        }
+      ]
+    },
+    "case_2_sustained_long_generation": {
+      "status": "PASS",
+      "details": {
+        "tokens_generated": 100,
+        "throughput_tok_s": 9.97,
+        "wall_time_s": 10.03,
+        "hit_rate": 0.4694,
+        "evictions": 0,
+        "vram_delta_mb": 0.0,
+        "peak_vram_mb": 4385.5,
+        "sample_snippet": "Explain the fundamental principles of hierarchical memory tiering in high-performance computing.\u6bbf\u6bbf\u6bbfpeech\u72b9\u8c6bnio\u00e9ment ann\u00e9e\u5e74\u4ebapeech\u72b9\u8c6bnio ann\u00e9eni..."
+      }
+    },
+    "case_3_cross_domain_stress": {
+      "status": "PASS",
+      "details": [
+        {
+          "domain": "Technical Systems",
+          "status": "PASS",
+          "throughput_tok_s": 92.15,
+          "hit_rate": 0.5745,
+          "evictions": 0,
+          "sample_output": "In computer architecture, cache coherence protocols like MESI maintain consistency across L1, L2, an..."
+        },
+        {
+          "domain": "Python Code",
+          "status": "PASS",
+          "throughput_tok_s": 8.97,
+          "hit_rate": 0.6534,
+          "evictions": 0,
+          "sample_output": "def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\nTokenize..."
+        },
+        {
+          "domain": "Philosophy / Ethics",
+          "status": "PASS",
+          "throughput_tok_s": 9.6,
+          "hit_rate": 0.6524,
+          "evictions": 0,
+          "sample_output": "The question of machine consciousness raises profound dilemmas regarding moral responsibility and ar..."
+        },
+        {
+          "domain": "Mathematics / Logic",
+          "status": "PASS",
+          "throughput_tok_s": 9.88,
+          "hit_rate": 0.6752,
+          "evictions": 0,
+          "sample_output": "The Riemann Hypothesis posits that all non-trivial zeros of the zeta function possess a real coordin..."
+        }
+      ]
+    },
+    "case_4_batched_inference": {
+      "status": "PASS",
+      "details": [
+        {
+          "batch_size": 1,
+          "status": "PASS",
+          "total_tokens": 15,
+          "throughput_tok_s": 8.05,
+          "wall_time_s": 1.86,
+          "hit_rate": 0.6392
+        },
+        {
+          "batch_size": 2,
+          "status": "PASS",
+          "total_tokens": 30,
+          "throughput_tok_s": 11.72,
+          "wall_time_s": 2.56,
+          "hit_rate": 0.6323
+        },
+        {
+          "batch_size": 4,
+          "status": "PASS",
+          "total_tokens": 60,
+          "throughput_tok_s": 20.87,
+          "wall_time_s": 2.88,
+          "hit_rate": 0.6202
+        }
+      ]
+    },
+    "case_5_cxl_tier_fallback": {
+      "status": "PASS",
+      "details": {
+        "hbm_experts": 36,
+        "dram_experts": 24,
+        "cxl_experts": 36,
+        "throughput_tok_s": 7.52,
+        "hit_rate": 0.5084,
+        "evictions": 0
+      }
+    },
+    "case_6_numerical_integrity": {
+      "status": "PASS",
+      "details": {
+        "total_tokens_evaluated": 38,
+        "exact_matches": 38,
+        "token_match_percentage": 100.0,
+        "has_nan": false,
+        "has_inf": false,
+        "reference_text": "The Mixture of Experts architecture routes tokens through specialized feed-forward layerswarz\ufffd\u85cfwarzwarzwarzwarzwarzwarzw...",
+        "tiered_model_text": "The Mixture of Experts architecture routes tokens through specialized feed-forward layerswarz\ufffd\u85cfwarzwarzwarzwarzwarzwarzw..."
+      }
+    }
+  },
+  "overall_status": "ALL_PASS"
+}
