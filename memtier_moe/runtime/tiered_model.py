@@ -66,6 +66,30 @@ class TieredMoEBlock(nn.Module):
         self.execution_mode = execution_mode
         self.enable_lookahead_gating = enable_lookahead_gating
 
+    def init_fast_path(self) -> None:
+        """Pre-cache direct expert pointers for zero-overhead autoregressive decode."""
+        self.is_hbm = []
+        self.hbm_experts = []
+        self.dram_experts = []
+
+        dram_pool = self.engine.tier_manager.get_pool(MemoryTier.DRAM)
+        for exp_idx in range(self.num_experts):
+            eid = (self.layer_idx, exp_idx)
+            meta = self.engine.tier_manager.get_metadata(eid)
+            is_hbm = (meta.current_tier == MemoryTier.HBM)
+            self.is_hbm.append(is_hbm)
+
+            if is_hbm:
+                mod = self.engine.cache.get_weights(eid)
+                self.hbm_experts.append(mod)
+                self.dram_experts.append(None)
+            else:
+                mod = dram_pool._store.get(eid)
+                if mod is None:
+                    mod = self.engine.cache.get_weights(eid)
+                self.hbm_experts.append(None)
+                self.dram_experts.append(mod)
+
     def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> Any:
         """Forward pass with tiered expert fetching."""
         # Drain transfers completed since previous layer
@@ -89,6 +113,31 @@ class TieredMoEBlock(nn.Module):
                 top_k_weights = top_k_weights / top_k_weights.sum(dim=-1, keepdim=True)
         else:
             raise ValueError(f"Block at layer {self.layer_idx} does not have a gate attribute")
+
+        # 1b. Autoregressive single-token decode fast path (zero bookkeeping overhead)
+        if self.execution_mode == "hybrid" and flat_hidden.shape[0] == 1 and hasattr(self, "is_hbm") and self.scheduler is None:
+            final_hidden_states = torch.zeros_like(flat_hidden)
+            for k in range(self.top_k):
+                exp_idx = int(selected_experts[0, k])
+                weight = top_k_weights[0, k]
+                if self.is_hbm[exp_idx]:
+                    self.engine.metrics.record_hit()
+                    out = self.hbm_experts[exp_idx](flat_hidden)
+                else:
+                    self.engine.metrics.record_miss()
+                    st_cpu = flat_hidden.to("cpu")
+                    out = self.dram_experts[exp_idx](st_cpu).to(flat_hidden.device, non_blocking=True)
+                    self.engine.metrics.counters["total_transfer_bytes"] += st_cpu.numel() * st_cpu.element_size() * 2
+                final_hidden_states = final_hidden_states + out * weight
+
+            if hasattr(self.original_block, "shared_expert"):
+                shared_out = self.original_block.shared_expert(flat_hidden)
+                if hasattr(self.original_block, "shared_expert_gate"):
+                    shared_gate = torch.sigmoid(self.original_block.shared_expert_gate(flat_hidden))
+                    shared_out = shared_out * shared_gate
+                final_hidden_states = final_hidden_states + shared_out
+
+            return final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
 
         # 2. Extract active expert mask
         with torch.no_grad():
@@ -124,6 +173,9 @@ class TieredMoEBlock(nn.Module):
             # SOTA Hybrid Compute (Activation Offload / Fiddler Mode):
             # Hot experts in HBM execute on GPU tensor cores.
             # Cold experts in Host DRAM execute on CPU via activation migration (8 KB vs 13.3 MB).
+            gpu_tasks = []
+            cpu_tasks = []
+
             for exp_idx in active_expert_indices:
                 eid = (self.layer_idx, exp_idx)
                 meta = self.engine.tier_manager.get_metadata(eid)
@@ -135,25 +187,30 @@ class TieredMoEBlock(nn.Module):
                 current_state = flat_hidden[token_idx]
 
                 if meta.current_tier == MemoryTier.HBM:
-                    # GPU Tensor Core Execution
                     self.engine.metrics.record_hit()
                     expert_layer = self.engine.cache.get_weights(eid)
-                    current_hidden = expert_layer(current_state)
+                    gpu_tasks.append((token_idx, top_k_pos, current_state, expert_layer))
                 else:
-                    # Host CPU Activation Offload
                     self.engine.metrics.record_miss()
                     pool = self.engine.tier_manager.get_pool(meta.current_tier)
                     expert_layer = pool._store.get(eid)
                     if expert_layer is None:
                         expert_layer = self.engine.cache.get_weights(eid)
+                    cpu_tasks.append((token_idx, top_k_pos, current_state, expert_layer))
 
-                    state_cpu = current_state.to("cpu")
-                    out_cpu = expert_layer(state_cpu)
-                    current_hidden = out_cpu.to(current_state.device, non_blocking=True)
+            # 1. Execute GPU Tensor Core operations (fast, asynchronous CUDA launch)
+            for token_idx, top_k_pos, current_state, expert_layer in gpu_tasks:
+                current_hidden = expert_layer(current_state)
+                current_hidden = current_hidden * top_k_weights[token_idx, top_k_pos, None]
+                final_hidden_states.index_add_(0, token_idx, current_hidden.to(final_hidden_states.dtype))
 
-                    # Track small activation payload
-                    act_bytes = state_cpu.numel() * state_cpu.element_size() * 2
-                    self.engine.metrics.counters["total_transfer_bytes"] += act_bytes
+            # 2. Concurrently execute CPU offloaded activations
+            for token_idx, top_k_pos, current_state, expert_layer in cpu_tasks:
+                state_cpu = current_state.to("cpu")
+                out_cpu = expert_layer(state_cpu)
+                current_hidden = out_cpu.to(current_state.device, non_blocking=True)
+                act_bytes = state_cpu.numel() * state_cpu.element_size() * 2
+                self.engine.metrics.counters["total_transfer_bytes"] += act_bytes
 
                 current_hidden = current_hidden * top_k_weights[token_idx, top_k_pos, None]
                 final_hidden_states.index_add_(0, token_idx, current_hidden.to(final_hidden_states.dtype))
@@ -218,6 +275,7 @@ class TieredMoEWrapper:
         initial_hbm_budget_bytes: Optional[int] = None,
         execution_mode: str = "weight_transfer",
         enable_lookahead_gating: bool = False,
+        expert_frequency: Optional[Dict[Tuple[int, int], float]] = None,
     ) -> None:
         self.model = model
         self.config = config
@@ -226,6 +284,7 @@ class TieredMoEWrapper:
         self.co_occurrence_model = co_occurrence_model
         self.execution_mode = execution_mode
         self.enable_lookahead_gating = enable_lookahead_gating
+        self.expert_frequency = expert_frequency
 
         # Scheduler
         self.scheduler: Optional[PrefetchScheduler] = None
@@ -281,6 +340,10 @@ class TieredMoEWrapper:
                 if nxt_moe is not None and hasattr(nxt_moe, "gate"):
                     next_gates[l_idx] = nxt_moe.gate
 
+        # 2. Extract all experts across all layers
+        all_discovered: List[Tuple[ExpertId, nn.Module, int]] = []
+        layer_meta: Dict[int, Tuple[Any, str, int, int]] = {}
+
         for l_idx, layer in enumerate(layers):
             moe_block = getattr(layer, "block_sparse_moe", None) or getattr(layer, "mlp", None)
             attr_name = "block_sparse_moe" if hasattr(layer, "block_sparse_moe") else "mlp"
@@ -309,31 +372,50 @@ class TieredMoEWrapper:
 
             num_experts = len(expert_modules_list)
             top_k = getattr(moe_block, "num_experts_per_tok", getattr(moe_block, "top_k", 2))
+            layer_meta[l_idx] = (moe_block, attr_name, num_experts, top_k)
 
             for exp_idx in range(num_experts):
                 eid: ExpertId = (l_idx, exp_idx)
                 expert_module = expert_modules_list[exp_idx]
                 expert_size = _tensor_size_bytes(expert_module)
+                all_discovered.append((eid, expert_module, expert_size))
 
-                # Initial placement: fill HBM up to budget, then DRAM, then CXL
-                if hbm_used + expert_size <= hbm_budget:
-                    initial_tier = MemoryTier.HBM
-                    hbm_used += expert_size
-                elif dram_used + expert_size <= dram_budget:
-                    initial_tier = MemoryTier.DRAM
-                    dram_used += expert_size
-                else:
-                    initial_tier = MemoryTier.CXL
+        # 3. Frequency-Aware Profile-Guided Hot-Expert Placement (SOTA):
+        # Determine popularity ranking across all layers
+        freq_map = self.expert_frequency
+        if freq_map is None and self.co_occurrence_model is not None:
+            stats = getattr(self.co_occurrence_model, "stats", None)
+            if stats is not None:
+                freq_map = getattr(stats, "marginal_counts", None)
 
-                self.engine.tier_manager.register_expert(eid, expert_size, initial_tier)
-                self.engine.tier_manager.place_initial(eid, expert_module, initial_tier)
+        if freq_map:
+            # Sort globally by activation frequency descending so top hot experts fill HBM
+            all_discovered.sort(key=lambda item: freq_map.get(item[0], 0), reverse=True)
+            logger.info(f"TieredMoEWrapper: Applied profile-guided placement using {len(freq_map)} expert frequencies.")
+        else:
+            # Layer-balanced round robin so every layer gets primary experts in HBM
+            all_discovered.sort(key=lambda item: (item[0][1], item[0][0]))
 
-                if initial_tier == MemoryTier.HBM:
-                    self.engine.cache.insert(eid)
+        for eid, expert_module, expert_size in all_discovered:
+            if hbm_used + expert_size <= hbm_budget:
+                initial_tier = MemoryTier.HBM
+                hbm_used += expert_size
+            elif dram_used + expert_size <= dram_budget:
+                initial_tier = MemoryTier.DRAM
+                dram_used += expert_size
+            else:
+                initial_tier = MemoryTier.CXL
 
-                total_experts_registered += 1
+            self.engine.tier_manager.register_expert(eid, expert_size, initial_tier)
+            self.engine.tier_manager.place_initial(eid, expert_module, initial_tier)
 
-            # Replace moe_block with TieredMoEBlock
+            if initial_tier == MemoryTier.HBM:
+                self.engine.cache.insert(eid)
+
+            total_experts_registered += 1
+
+        # 4. Patch transformer layers with TieredMoEBlock
+        for l_idx, (moe_block, attr_name, num_experts, top_k) in layer_meta.items():
             tiered_block = TieredMoEBlock(
                 original_block=moe_block,
                 layer_idx=l_idx,
@@ -345,7 +427,8 @@ class TieredMoEWrapper:
                 execution_mode=self.execution_mode,
                 enable_lookahead_gating=self.enable_lookahead_gating,
             )
-            setattr(layer, attr_name, tiered_block)
+            tiered_block.init_fast_path()
+            setattr(layers[l_idx], attr_name, tiered_block)
             layer_count += 1
 
         logger.info(

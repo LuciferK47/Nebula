@@ -52,6 +52,7 @@ class CoOccurrenceModel:
 
     def build_from_stats(self, stats: CoOccurrenceStats) -> None:
         """Build the model from pre-computed co-occurrence statistics."""
+        self.stats = stats
         self._cond_probs = build_conditional_probabilities(
             stats, min_threshold=self.min_probability
         )

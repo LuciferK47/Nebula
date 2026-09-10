@@ -87,7 +87,7 @@ def run_benchmark_scenario(
         model=base_model,
         config=config,
         enable_prefetch=enable_prefetch,
-        co_occurrence_model=co_model if enable_prefetch else None,
+        co_occurrence_model=co_model,
         initial_hbm_budget_bytes=hbm_budget_mb * 1024 * 1024,
         execution_mode=execution_mode,
         enable_lookahead_gating=enable_lookahead_gating,
@@ -169,9 +169,9 @@ def plot_live_throughput(results: List[Dict[str, Any]], output_path: str = "resu
         "#d62728",  # Two-Tier 600MB: red
         "#ff7f0e",  # Lookahead 600MB: orange
         "#2ca02c",  # Hybrid 600MB: green
-        "#17becf",  # Hybrid + Lookahead: cyan
         "#9467bd",  # Two-Tier 900MB: purple
-        "#8c564b",  # Hybrid 900MB: brown
+        "#17becf",  # Hybrid 900MB: cyan
+        "#2e7d32",  # Hybrid 1500MB (Near Full VRAM): dark green
     ]
     bar_colors = colors[:len(names)]
 
@@ -216,7 +216,7 @@ def plot_live_throughput(results: List[Dict[str, Any]], output_path: str = "resu
 
     ax1.set_ylim(0, max(throughputs) * 1.25)
 
-    # Panel 2: PCIe Transfer Volume (Log scale or Linear)
+    # Panel 2: PCIe Transfer Volume
     bars2 = ax3.bar(x, transfers, width, color=bar_colors, edgecolor="#222", linewidth=1.2, zorder=3)
     ax3.set_ylabel("PCIe Transfer Volume (MB)", fontsize=12, fontweight="bold", color="#111")
     ax3.set_title("PCIe Memory Bus Traffic (MB Transferred)\n(Activation Offloading vs Weight Migration)", fontsize=13, fontweight="bold", pad=12)
@@ -245,7 +245,7 @@ def plot_live_throughput(results: List[Dict[str, Any]], output_path: str = "resu
 def main():
     parser = argparse.ArgumentParser(description="Live Hardware MoE Benchmark")
     parser.add_argument("--model-id", type=str, default="nopainkiller/Qwen1.5-4x0.5B-MoE")
-    parser.add_argument("--tokens", type=int, default=30, help="Tokens to generate per run")
+    parser.add_argument("--tokens", type=int, default=25, help="Tokens to generate per run")
     parser.add_argument("--output-json", type=str, default="results/live_benchmark_results.json")
     parser.add_argument("--output-plot", type=str, default="results/throughput_comparison.png")
     args = parser.parse_args()
@@ -278,7 +278,7 @@ def main():
     print("\n[2/3] Setting up router co-occurrence model...")
     co_model = load_or_calibrate_co_occurrence(model=base_model, tokenizer=tokenizer)
 
-    # 3. Define Scenarios: Systematic Evaluation
+    # 3. Define Scenarios: Systematic Evaluation & Scaling toward Full VRAM
     scenarios = [
         {
             "name": "GPU-Resident (Full VRAM)",
@@ -308,22 +308,13 @@ def main():
             "lookahead": True,
         },
         {
-            "name": "Hybrid Compute (Fiddler 600MB)",
+            "name": "Hybrid SOTA (Fiddler 600MB)",
             "hbm_mb": 600,
             "dram_mb": 1500,
             "cxl_mb": 1000,
             "prefetch": False,
             "execution_mode": "hybrid",
             "lookahead": False,
-        },
-        {
-            "name": "Hybrid + Lookahead (600MB)",
-            "hbm_mb": 600,
-            "dram_mb": 1500,
-            "cxl_mb": 1000,
-            "prefetch": True,
-            "execution_mode": "hybrid",
-            "lookahead": True,
         },
         {
             "name": "Two-Tier (Weight Transfer 900M)",
@@ -335,8 +326,17 @@ def main():
             "lookahead": False,
         },
         {
-            "name": "Hybrid Compute (Fiddler 900MB)",
+            "name": "Hybrid SOTA (Fiddler 900MB)",
             "hbm_mb": 900,
+            "dram_mb": 1500,
+            "cxl_mb": 1000,
+            "prefetch": False,
+            "execution_mode": "hybrid",
+            "lookahead": False,
+        },
+        {
+            "name": "Hybrid SOTA (Near Full 1500MB)",
+            "hbm_mb": 1500,
             "dram_mb": 1500,
             "cxl_mb": 1000,
             "prefetch": False,
