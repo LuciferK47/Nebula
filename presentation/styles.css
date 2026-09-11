@@ -609,25 +609,109 @@ input[type="range"] {
 }
 
 .terminal-body {
-  padding: 20px;
-  background: #060911;
-  min-height: 180px;
-  max-height: 320px;
+  padding: 16px 20px;
+  background: #050811;
+  min-height: 220px;
+  max-height: 380px;
   overflow-y: auto;
   font-family: var(--font-mono);
   font-size: 0.88rem;
   line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.output-block {
-  color: #e2e8f0;
+.terminal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.prompt-tag {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.output-tag {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-emerald);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.token-tag {
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--accent-purple);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.terminal-text-block {
+  padding: 10px 14px;
+  background: rgba(12, 17, 29, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.placeholder-text {
+.prompt-text {
+  color: #cbd5e1;
+  font-style: normal;
+  border-left: 3px solid var(--accent-cyan);
+}
+
+.stream-output {
+  color: #a7f3d0;
+  font-weight: 500;
+  border-left: 3px solid var(--accent-emerald);
+  box-shadow: inset 0 0 16px rgba(16, 185, 129, 0.05);
+  min-height: 50px;
+}
+
+.terminal-tokens-block {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(10, 14, 24, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  min-height: 38px;
+}
+
+.token-pill {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  color: #d8b4fe;
+  border-radius: 4px;
+}
+
+.model-note-banner {
+  padding: 10px 18px;
+  background: rgba(15, 23, 42, 0.9);
+  border-top: 1px solid var(--surface-border);
+  font-size: 0.74rem;
   color: var(--text-muted);
-  font-style: italic;
+  line-height: 1.4;
+}
+
+.model-note-banner code {
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
 }
 
 /* ==========================================================================

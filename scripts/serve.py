@@ -257,8 +257,11 @@ def run_single_inference(
             torch.cuda.synchronize()
         wall_time = time.perf_counter() - t0
 
-        generated_token_count = output_ids.shape[1] - inputs["input_ids"].shape[1]
-        decoded_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        input_len = inputs["input_ids"].shape[1]
+        generated_token_count = output_ids.shape[1] - input_len
+        new_token_ids = output_ids[0][input_len:]
+        new_tokens_text = tokenizer.decode(new_token_ids, skip_special_tokens=True)
+        full_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         report = wrapper.report()
         m = report["metrics"]
@@ -272,7 +275,9 @@ def run_single_inference(
         return {
             "baseline": spec,
             "prompt": prompt,
-            "generated_text": decoded_text,
+            "generated_text": new_tokens_text,
+            "full_text": full_text,
+            "token_ids": [int(t) for t in new_token_ids[:30]],
             "generated_tokens": generated_token_count,
             "wall_time_seconds": round(wall_time, 3),
             "tokens_per_second": round(tok_per_sec, 2),

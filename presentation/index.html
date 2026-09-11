@@ -71,7 +71,7 @@
 
           <!-- Prompt Presets Chips -->
           <div class="presets-container">
-            <span class="presets-label">Prompt Presets:</span>
+            <span class="presets-label">Prefix-Completion Presets:</span>
             <div class="chips-row">
               <button type="button" class="chip active" data-preset="arch">
                 🏛️ Hierarchical Tiering
@@ -80,7 +80,7 @@
                 ⚡ Parallel Quicksort
               </button>
               <button type="button" class="chip" data-preset="phil">
-                🧠 Consciousness
+                🧠 Sparse Representation
               </button>
               <button type="button" class="chip" data-preset="math">
                 📐 MoE Sublinear Scaling
@@ -90,10 +90,10 @@
 
           <!-- Textarea -->
           <div class="input-wrap">
-            <textarea id="prompt-input" rows="4" placeholder="Enter custom inference prompt here..."></textarea>
+            <textarea id="prompt-input" rows="4" placeholder="Enter prompt prefix for autoregressive continuation..."></textarea>
             <div class="input-footer">
               <span id="char-count">0 chars</span>
-              <span class="hint-text">Autoregressive greedy decode</span>
+              <span class="hint-text">Autoregressive MoE token generation</span>
             </div>
           </div>
 
@@ -125,11 +125,11 @@
           <div class="button-action-grid">
             <button id="btn-run-single" class="btn btn-primary">
               <span class="btn-icon">▶</span>
-              <span class="btn-text">Run Prompt (Selected Baseline)</span>
+              <span class="btn-text">Run Prompt (Active Baseline)</span>
             </button>
             <button id="btn-run-compare" class="btn btn-secondary">
               <span class="btn-icon">⚖️</span>
-              <span class="btn-text">Run Live Baseline Comparison</span>
+              <span class="btn-text">Run Live Baseline Comparison Matrix</span>
             </button>
             <button id="btn-load-verified" class="btn btn-tertiary">
               <span class="btn-icon">📊</span>
@@ -154,7 +154,7 @@
               <span class="dot red"></span>
               <span class="dot yellow"></span>
               <span class="dot green"></span>
-              <span class="terminal-title">Generation Streamer & Console</span>
+              <span class="terminal-title">Generation Streamer & Hardware Telemetry</span>
             </div>
             <div class="terminal-stats" id="terminal-stats">
               <span class="stat-pill" id="stat-speed">0.00 tok/s</span>
@@ -162,10 +162,37 @@
               <button class="copy-btn" id="btn-copy" title="Copy Output">📋 Copy</button>
             </div>
           </div>
+          
           <div class="terminal-body">
-            <div class="output-block" id="stream-output">
-              <span class="placeholder-text">Click "Run Prompt" or "Load Verified Benchmarks" to observe live generation and hardware telemetry.</span>
+            <!-- Distinct Input Prompt Box -->
+            <div class="terminal-section">
+              <div class="section-tag prompt-tag">PROMPT INPUT</div>
+              <div class="terminal-text-block prompt-text" id="display-prompt">
+                The concurrent quicksort algorithm optimizes memory locality across processor cache lines by
+              </div>
             </div>
+
+            <!-- Distinct Generated Tokens Box -->
+            <div class="terminal-section">
+              <div class="section-tag output-tag">
+                GENERATED OUTPUT (<span id="out-token-count">0</span> TOKENS)
+              </div>
+              <div class="terminal-text-block stream-output" id="stream-output">
+                <span class="placeholder-text">Click "Run Prompt" or "Load Verified Benchmarks" to observe live generation.</span>
+              </div>
+            </div>
+
+            <!-- Token IDs & Routing Stream -->
+            <div class="terminal-section">
+              <div class="section-tag token-tag">TOKEN IDS STREAM</div>
+              <div class="terminal-tokens-block" id="token-id-stream">
+                <span class="placeholder-text">Token IDs will appear here during decode pass.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="model-note-banner">
+            🔬 <strong>Research Checkpoint:</strong> <code>nopainkiller/Qwen1.5-4x0.5B-MoE</code> is a systems-research MoE verifying physical expert routing, 3-tier memory allocation, and PCIe bus telemetry.
           </div>
         </section>
       </div>

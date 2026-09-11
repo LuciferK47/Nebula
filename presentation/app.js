@@ -5,10 +5,10 @@
  */
 
 const PRESETS = {
-  arch: "Explain the fundamental principles of hierarchical memory tiering across HBM, Host DRAM, and CXL in modern MoE architectures.",
-  algo: "Write an optimized concurrent Quicksort algorithm in Python and analyze cache thrashing behavior across L1/L2 caches.",
-  phil: "Discuss whether machine consciousness can emerge from sparse routing neural networks with dynamic parameter activation.",
-  math: "Derive why top-2 expert routing scales sublinearly with parameter count in multi-expert large language models.",
+  arch: "In modern heterogeneous computing, the hierarchical memory tiering architecture utilizes HBM, DRAM, and CXL memory to",
+  algo: "The concurrent quicksort algorithm optimizes memory locality across processor cache lines by",
+  phil: "Artificial neural networks achieve sparse representation by routing latent states through specialized experts which",
+  math: "Mixture of Experts architecture enables sublinear parameter scaling by selectively routing tokens through",
 };
 
 const DEFAULT_BASELINES = [
@@ -110,6 +110,9 @@ const btnRunSingle = document.getElementById("btn-run-single");
 const btnRunCompare = document.getElementById("btn-run-compare");
 const btnLoadVerified = document.getElementById("btn-load-verified");
 const streamOutput = document.getElementById("stream-output");
+const displayPrompt = document.getElementById("display-prompt");
+const tokenIdStream = document.getElementById("token-id-stream");
+const outTokenCount = document.getElementById("out-token-count");
 const statSpeed = document.getElementById("stat-speed");
 const statLatency = document.getElementById("stat-latency");
 const btnCopy = document.getElementById("btn-copy");
@@ -340,9 +343,10 @@ async function handleRunSingle() {
 
   isRunning = true;
   showStatus(true, "Running Live Inference...", `Executing ${maxTokens} tokens on NVIDIA RTX 4050 GPU...`);
-  streamOutput.innerHTML = `<span class="placeholder-text">[CUDA Stream Initializing] Executing forward pass on target baseline...</span>`;
+  if (displayPrompt) displayPrompt.textContent = prompt;
+  if (streamOutput) streamOutput.innerHTML = `<span class="placeholder-text">[CUDA Forward Stream] Processing token routing and memory tier residency...</span>`;
+  if (tokenIdStream) tokenIdStream.innerHTML = `<span class="placeholder-text">Evaluating...</span>`;
 
-  const t0 = performance.now();
   try {
     const res = await fetch("/api/run", {
       method: "POST",
@@ -362,7 +366,7 @@ async function handleRunSingle() {
     const data = await res.json();
 
     // Typewriter effect on terminal
-    await streamText(data.generated_text);
+    await streamText(data.generated_text || data.full_text, data.token_ids || [], data.generated_tokens);
 
     // Update telemetry pill stats
     statSpeed.textContent = `${data.tokens_per_second.toFixed(2)} tok/s`;
@@ -402,7 +406,8 @@ async function handleRunCompare() {
   const maxTokens = parseInt(tokensSlider.value, 10);
   isRunning = true;
   showStatus(true, "Comparing All Baselines...", `Running comparative matrix across all 5 architectures...`);
-  streamOutput.innerHTML = `<span class="placeholder-text">[Benchmark Sequence Initiated] Testing all baselines sequentially on RTX 4050 GPU...</span>`;
+  if (displayPrompt) displayPrompt.textContent = prompt;
+  if (streamOutput) streamOutput.innerHTML = `<span class="placeholder-text">[Benchmark Sequence Initiated] Testing all baselines sequentially on RTX 4050 GPU...</span>`;
 
   try {
     const res = await fetch("/api/compare", {
@@ -420,12 +425,12 @@ async function handleRunCompare() {
     }
 
     const data = await res.json();
-    let terminalSummary = `Prompt: "${prompt}"\nGenerated Tokens: ${maxTokens}\n\n`;
+    let terminalSummary = ``;
 
     data.results.forEach((r) => {
       terminalSummary += `[${r.baseline.name}]\n` +
-        `  Throughput: ${r.tokens_per_second.toFixed(2)} tok/s | Time: ${r.wall_time_seconds.toFixed(2)}s\n` +
-        `  Hit Rate: ${(r.hit_rate * 100).toFixed(1)}% | Evictions: ${r.evictions} | Bus: ${r.transfer_mb.toFixed(1)} MB\n\n`;
+        `  Throughput: ${r.tokens_per_second.toFixed(2)} tok/s | Latency: ${r.wall_time_seconds.toFixed(2)}s\n` +
+        `  Cache Hit Rate: ${(r.hit_rate * 100).toFixed(1)}% | Evictions: ${r.evictions} | PCIe Bus: ${r.transfer_mb.toFixed(1)} MB\n\n`;
 
       const matched = currentBaselines.find((b) => b.id === r.baseline.id);
       if (matched) {
@@ -442,8 +447,19 @@ async function handleRunCompare() {
     const sotaRun = data.results.find((r) => r.baseline.id === "hybrid_sota_600") || data.results[0];
     statSpeed.textContent = `${sotaRun.tokens_per_second.toFixed(2)} tok/s`;
     statLatency.textContent = `${sotaRun.wall_time_seconds.toFixed(2)} s`;
+    if (outTokenCount) outTokenCount.textContent = maxTokens;
 
     streamOutput.innerText = terminalSummary;
+    if (tokenIdStream) {
+      tokenIdStream.innerHTML = "";
+      (sotaRun.token_ids || []).forEach((id) => {
+        const pill = document.createElement("span");
+        pill.className = "token-pill";
+        pill.textContent = `#${id}`;
+        tokenIdStream.appendChild(pill);
+      });
+    }
+
     comparisonSourceBadge.textContent = "Live Matrix Evaluated";
     renderScorecards();
     updateCharts();
@@ -465,15 +481,29 @@ function showStatus(visible, title = "", desc = "") {
   }
 }
 
-async function streamText(text) {
+async function streamText(text, tokenIds = [], tokenCount = 0) {
   streamOutput.innerText = "";
-  const chars = text.split("");
+  if (tokenIdStream) tokenIdStream.innerHTML = "";
+  if (outTokenCount) outTokenCount.textContent = tokenCount || 25;
+
+  const chars = (text || "").split("");
   for (let i = 0; i < chars.length; i++) {
     streamOutput.innerText += chars[i];
     streamOutput.scrollTop = streamOutput.scrollHeight;
-    if (i % 3 === 0) {
-      await new Promise((r) => setTimeout(r, 8));
+    if (i % 2 === 0) {
+      await new Promise((r) => setTimeout(r, 10));
     }
+  }
+
+  // Render token ID pills
+  if (tokenIdStream && tokenIds && tokenIds.length > 0) {
+    tokenIdStream.innerHTML = "";
+    tokenIds.forEach((id) => {
+      const pill = document.createElement("span");
+      pill.className = "token-pill";
+      pill.textContent = `#${id}`;
+      tokenIdStream.appendChild(pill);
+    });
   }
 }
 
