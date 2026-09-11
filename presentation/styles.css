@@ -546,10 +546,53 @@ input[type="range"] {
 }
 
 .terminal-header {
-  padding: 14px 20px;
+  padding: 12px 18px;
   background: rgba(8, 12, 22, 0.9);
   border-bottom: 1px solid var(--surface-border);
   margin-bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.terminal-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stream-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-inner);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.mode-btn:hover {
+  color: var(--text-primary);
+}
+
+.mode-btn.active {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald-glow);
 }
 
 .terminal-dots {

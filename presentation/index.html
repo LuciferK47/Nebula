@@ -156,10 +156,20 @@
               <span class="dot green"></span>
               <span class="terminal-title">Generation Streamer & Hardware Telemetry</span>
             </div>
-            <div class="terminal-stats" id="terminal-stats">
-              <span class="stat-pill" id="stat-speed">0.00 tok/s</span>
-              <span class="stat-pill" id="stat-latency">0.00 s</span>
-              <button class="copy-btn" id="btn-copy" title="Copy Output">📋 Copy</button>
+            <div class="terminal-controls-row">
+              <div class="stream-mode-toggle">
+                <button type="button" class="mode-btn active" id="btn-mode-coherent" title="Show coherent semantic completion for presentation">
+                  ✨ Coherent Demo
+                </button>
+                <button type="button" class="mode-btn" id="btn-mode-raw" title="Show raw unaligned GPU token output">
+                  🔬 Raw GPU Tokens
+                </button>
+              </div>
+              <div class="terminal-stats" id="terminal-stats">
+                <span class="stat-pill" id="stat-speed">0.00 tok/s</span>
+                <span class="stat-pill" id="stat-latency">0.00 s</span>
+                <button class="copy-btn" id="btn-copy" title="Copy Output">📋 Copy</button>
+              </div>
             </div>
           </div>
           

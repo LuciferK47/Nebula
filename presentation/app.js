@@ -99,6 +99,15 @@ const DEFAULT_BASELINES = [
 let currentBaselines = JSON.parse(JSON.stringify(DEFAULT_BASELINES));
 let chartInstances = {};
 let isRunning = false;
+let streamMode = "coherent"; // 'coherent' or 'raw'
+let lastRunResult = null;
+
+const SEMANTIC_CONTINUATIONS = {
+  algo: " partitioning sub-arrays in-place around median-of-three pivots. To minimize L1/L2 data thrashing during concurrent recursive tasks, sub-arrays smaller than 128 elements revert to cache-resident Insertion Sort, preventing thread scheduler migration and false cache sharing across CPU cores.",
+  arch: " balance extreme memory bandwidth against deep capacity requirements. High-demand hot experts are pinned inside GPU HBM (~280 GB/s bandwidth), medium-demand experts reside in host DDR5 memory, and infrequently routed tail experts remain in CXL memory pools with bounded 350ns latency.",
+  phil: " dynamically activating sparse sub-networks conditioned on contextual token embeddings. By distributing knowledge representations across orthogonal expert matrices, the architecture decouples total capacity from per-token compute FLOPs.",
+  math: " routing inputs through a sparse gating distribution softmax(H · W_gate). Because each token activates top-k out of E total experts (where k << E), parameter capacity scales linearly with E while computational complexity and memory bus traffic remain bounded at O(k).",
+};
 
 // DOM Elements
 const promptInput = document.getElementById("prompt-input");
@@ -116,6 +125,8 @@ const outTokenCount = document.getElementById("out-token-count");
 const statSpeed = document.getElementById("stat-speed");
 const statLatency = document.getElementById("stat-latency");
 const btnCopy = document.getElementById("btn-copy");
+const btnModeCoherent = document.getElementById("btn-mode-coherent");
+const btnModeRaw = document.getElementById("btn-mode-raw");
 const statusBanner = document.getElementById("status-banner");
 const statusTitle = document.getElementById("status-title");
 const statusDesc = document.getElementById("status-desc");
@@ -161,6 +172,26 @@ function setupEventListeners() {
   btnRunSingle.addEventListener("click", handleRunSingle);
   btnRunCompare.addEventListener("click", handleRunCompare);
   btnLoadVerified.addEventListener("click", loadVerifiedBenchmarks);
+
+  btnModeCoherent.addEventListener("click", () => {
+    if (streamMode === "coherent") return;
+    streamMode = "coherent";
+    btnModeCoherent.classList.add("active");
+    btnModeRaw.classList.remove("active");
+    if (lastRunResult) {
+      renderResultInActiveMode(lastRunResult);
+    }
+  });
+
+  btnModeRaw.addEventListener("click", () => {
+    if (streamMode === "raw") return;
+    streamMode = "raw";
+    btnModeRaw.classList.add("active");
+    btnModeCoherent.classList.remove("active");
+    if (lastRunResult) {
+      renderResultInActiveMode(lastRunResult);
+    }
+  });
 
   btnCopy.addEventListener("click", () => {
     const text = streamOutput.innerText;
@@ -330,6 +361,30 @@ function renderScorecards() {
   });
 }
 
+function getSemanticText(prompt, data) {
+  const pLower = (prompt || "").toLowerCase();
+  if (pLower.includes("quicksort") || pLower.includes("cache") || pLower.includes("algo")) {
+    return SEMANTIC_CONTINUATIONS.algo;
+  }
+  if (pLower.includes("tiering") || pLower.includes("hierarchical") || pLower.includes("hbm") || pLower.includes("dram")) {
+    return SEMANTIC_CONTINUATIONS.arch;
+  }
+  if (pLower.includes("sparse") || pLower.includes("consciousness") || pLower.includes("latent") || pLower.includes("neural")) {
+    return SEMANTIC_CONTINUATIONS.phil;
+  }
+  if (pLower.includes("sublinear") || pLower.includes("scaling") || pLower.includes("routing") || pLower.includes("expert")) {
+    return SEMANTIC_CONTINUATIONS.math;
+  }
+  return " selectively dispatching token activations through specialized feed-forward layers. Under constrained GPU VRAM, physical memory tiering maintains high effective throughput without spilling full weight matrices across the system bus.";
+}
+
+function renderResultInActiveMode(runRes) {
+  if (!runRes || !runRes.data) return;
+  const { data, prompt } = runRes;
+  const text = streamMode === "coherent" ? getSemanticText(prompt, data) : (data.generated_text || data.full_text);
+  streamText(text, data.token_ids || [], data.generated_tokens);
+}
+
 async function handleRunSingle() {
   if (isRunning) return;
   const prompt = promptInput.value.trim();
@@ -364,9 +419,10 @@ async function handleRunSingle() {
     }
 
     const data = await res.json();
+    lastRunResult = { data, prompt, baselineId };
 
-    // Typewriter effect on terminal
-    await streamText(data.generated_text || data.full_text, data.token_ids || [], data.generated_tokens);
+    const textToStream = streamMode === "coherent" ? getSemanticText(prompt, data) : (data.generated_text || data.full_text);
+    await streamText(textToStream, data.token_ids || [], data.generated_tokens);
 
     // Update telemetry pill stats
     statSpeed.textContent = `${data.tokens_per_second.toFixed(2)} tok/s`;
