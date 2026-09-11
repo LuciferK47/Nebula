@@ -203,6 +203,9 @@ def run_single_inference(
     prompt: str,
     baseline_id: str,
     max_new_tokens: int = 25,
+    do_sample: bool = False,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
 ) -> Dict[str, Any]:
     """Execute live prompt generation on GPU using selected baseline."""
     spec = next((s for s in BASELINE_SPECS if s["id"] == baseline_id), BASELINE_SPECS[1])
@@ -240,6 +243,17 @@ def run_single_inference(
         if torch.cuda.is_available():
             inputs = {k: v.cuda() for k, v in inputs.items()}
 
+        gen_kwargs: Dict[str, Any] = {
+            "max_new_tokens": max_new_tokens,
+            "repetition_penalty": 1.1,
+        }
+        if do_sample:
+            gen_kwargs["do_sample"] = True
+            gen_kwargs["temperature"] = max(float(temperature), 0.1)
+            gen_kwargs["top_p"] = min(max(float(top_p), 0.1), 1.0)
+        else:
+            gen_kwargs["do_sample"] = False
+
         # Timed execution
         if torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -248,9 +262,7 @@ def run_single_inference(
         with torch.no_grad():
             output_ids = wrapper.generate(
                 **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                repetition_penalty=1.1,
+                **gen_kwargs,
             )
 
         if torch.cuda.is_available():
@@ -367,9 +379,19 @@ class MemTierRequestHandler(SimpleHTTPRequestHandler):
             prompt = payload.get("prompt", "Mixture of Experts architecture enables efficient scaling.")
             baseline_id = payload.get("baseline_id", "hybrid_sota_600")
             max_tokens = int(payload.get("max_tokens", 25))
+            do_sample = bool(payload.get("do_sample", False))
+            temperature = float(payload.get("temperature", 0.7))
+            top_p = float(payload.get("top_p", 0.9))
 
             try:
-                res = run_single_inference(prompt=prompt, baseline_id=baseline_id, max_new_tokens=max_tokens)
+                res = run_single_inference(
+                    prompt=prompt,
+                    baseline_id=baseline_id,
+                    max_new_tokens=max_tokens,
+                    do_sample=do_sample,
+                    temperature=temperature,
+                    top_p=top_p,
+                )
                 self.send_json_response(res)
             except Exception as e:
                 import traceback

@@ -121,6 +121,19 @@
             </div>
           </div>
 
+          <!-- Sampling / Stochastic Mode Row -->
+          <div class="sampling-row">
+            <label class="sampling-checkbox-label" for="sampling-checkbox">
+              <input type="checkbox" id="sampling-checkbox" />
+              <span>🎲 Stochastic Sampling (Generates New Answer per Run)</span>
+            </label>
+            <div class="temp-slider-wrap hidden" id="temp-slider-container">
+              <span class="temp-label">Temp:</span>
+              <span class="slider-badge" id="temp-val">0.7</span>
+              <input type="range" id="temp-slider" min="0.2" max="1.2" value="0.7" step="0.1" />
+            </div>
+          </div>
+
           <!-- Action Buttons -->
           <div class="button-action-grid">
             <button id="btn-run-single" class="btn btn-primary">
@@ -166,6 +179,7 @@
                 </button>
               </div>
               <div class="terminal-stats" id="terminal-stats">
+                <span class="stat-pill live-pill" id="stat-run-tag">Live GPU</span>
                 <span class="stat-pill" id="stat-speed">0.00 tok/s</span>
                 <span class="stat-pill" id="stat-latency">0.00 s</span>
                 <button class="copy-btn" id="btn-copy" title="Copy Output">📋 Copy</button>

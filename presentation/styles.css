@@ -438,6 +438,62 @@ input[type="range"] {
   border-radius: 3px;
 }
 
+.sampling-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  background: var(--surface-inner);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sampling-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.sampling-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+.temp-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.temp-slider-wrap.hidden {
+  display: none;
+}
+
+.temp-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.temp-slider-wrap input[type="range"] {
+  width: 90px;
+  height: 5px;
+}
+
+.stat-pill.live-pill {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-cyan);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
 .button-action-grid {
   display: flex;
   flex-direction: column;
