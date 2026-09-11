@@ -30,8 +30,8 @@ MODEL_LOCK = threading.Lock()
 CACHED_MODEL = None
 CACHED_TOKENIZER = None
 CACHED_CO_MODEL = None
-CACHED_FREQ_MAP = None
-DEFAULT_MODEL_ID = "nopainkiller/Qwen1.5-4x0.5B-MoE"
+LOCAL_CHAT_MOE = os.path.join(REPO_ROOT, "models", "Qwen1.5-4x0.5B-Chat-MoE")
+DEFAULT_MODEL_ID = LOCAL_CHAT_MOE if os.path.exists(LOCAL_CHAT_MOE) else "nopainkiller/Qwen1.5-4x0.5B-MoE"
 
 BASELINE_SPECS = [
     {
@@ -49,7 +49,7 @@ BASELINE_SPECS = [
     },
     {
         "id": "hybrid_sota_600",
-        "name": "Hybrid SOTA (Fiddler 600MB)",
+        "name": "Hybrid SOTA (Activation Offload)",
         "badge": "Recommended / SOTA",
         "color": "#10b981",
         "hbm_budget_mb": 600,
@@ -58,7 +58,7 @@ BASELINE_SPECS = [
         "execution_mode": "hybrid",
         "enable_prefetch": False,
         "enable_lookahead": False,
-        "description": "Transfers activations instead of weights for cache misses. 0 evictions, minimal PCIe traffic.",
+        "description": "Transfers activations (KB) instead of weights (MB) for cache misses. Zero weight evictions, minimal PCIe traffic.",
     },
     {
         "id": "lookahead_600",
@@ -88,8 +88,8 @@ BASELINE_SPECS = [
     },
     {
         "id": "hybrid_sota_900",
-        "name": "Hybrid SOTA (Fiddler 900MB)",
-        "badge": "High Hit Rate",
+        "name": "Hybrid SOTA (Dynamic Headroom)",
+        "badge": "Dynamic Headroom",
         "color": "#a855f7",
         "hbm_budget_mb": 900,
         "dram_budget_mb": 1500,
@@ -97,7 +97,7 @@ BASELINE_SPECS = [
         "execution_mode": "hybrid",
         "enable_prefetch": False,
         "enable_lookahead": False,
-        "description": "900MB HBM budget with hybrid execution, surpassing GPU-resident throughput.",
+        "description": "Dynamically expands HBM headroom (1.5x constraint) for hot expert retention, boosting hit rate and throughput.",
     },
 ]
 
@@ -120,7 +120,7 @@ def get_system_info() -> Dict[str, Any]:
         "vram_used_gb": vram_used_gb,
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda if cuda_available else None,
-        "default_model": DEFAULT_MODEL_ID,
+        "default_model": "Qwen1.5-4x0.5B-Chat-MoE (Instruction-Tuned)" if os.path.exists(LOCAL_CHAT_MOE) else DEFAULT_MODEL_ID,
         "active_tiers": ["HBM (GPU VRAM)", "Host DRAM (Pinned)", "CXL Memory Pool (Emulated Tier-3)"],
     }
 
@@ -206,11 +206,34 @@ def run_single_inference(
     do_sample: bool = False,
     temperature: float = 0.7,
     top_p: float = 0.9,
+    memory_constraint_mb: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Execute live prompt generation on GPU using selected baseline."""
-    spec = next((s for s in BASELINE_SPECS if s["id"] == baseline_id), BASELINE_SPECS[1])
+    matched_spec = next(
+        (s for s in BASELINE_SPECS if s["id"] == baseline_id or (s["id"] == "hybrid_sota_600" and baseline_id in ("hybrid_sota", "hybrid_sota_unconstrained"))),
+        BASELINE_SPECS[1]
+    )
+    spec = dict(matched_spec)
+
+    # Dynamic memory constraint override from frontend
+    if memory_constraint_mb is not None:
+        try:
+            val = int(memory_constraint_mb)
+            if val <= 0 or val >= 2500:
+                spec["hbm_budget_mb"] = 2500
+            elif spec["id"] == "gpu_resident":
+                spec["hbm_budget_mb"] = 2500
+            elif spec["id"] == "hybrid_sota_900":
+                spec["hbm_budget_mb"] = min(2500, int(val * 1.5))
+            else:
+                spec["hbm_budget_mb"] = val
+        except (ValueError, TypeError):
+            pass
 
     base_model, tokenizer, co_model, freq_map = load_model_resources()
+
+    # Unconstrained tokens: if max_new_tokens <= 0 or None, generate naturally up to 2048 or EOS
+    effective_max_tokens = 2048 if (max_new_tokens is None or int(max_new_tokens) <= 0) else int(max_new_tokens)
 
     from memtier_moe.core.config import MemTierConfig
     from memtier_moe.runtime.tiered_model import TieredMoEWrapper
@@ -239,13 +262,33 @@ def run_single_inference(
             expert_frequency=freq_map,
         )
 
-        inputs = tokenizer(prompt, return_tensors="pt")
+        # Format prompt with chat template if available for coherent instruction following
+        if hasattr(tokenizer, "apply_chat_template") and getattr(tokenizer, "chat_template", None):
+            try:
+                formatted_prompt = tokenizer.apply_chat_template(
+                    [{"role": "user", "content": prompt}],
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+                inputs = tokenizer(formatted_prompt, return_tensors="pt")
+            except Exception:
+                inputs = tokenizer(prompt, return_tensors="pt")
+        else:
+            inputs = tokenizer(prompt, return_tensors="pt")
+
         if torch.cuda.is_available():
             inputs = {k: v.cuda() for k, v in inputs.items()}
 
+        eos_ids = [151645, 151643]
+        if getattr(tokenizer, "eos_token_id", None) is not None:
+            eos_ids.append(tokenizer.eos_token_id)
+        eos_ids = list(set([t for t in eos_ids if t is not None]))
+
         gen_kwargs: Dict[str, Any] = {
-            "max_new_tokens": max_new_tokens,
-            "repetition_penalty": 1.1,
+            "max_new_tokens": effective_max_tokens,
+            "repetition_penalty": 1.15,
+            "pad_token_id": tokenizer.pad_token_id or tokenizer.eos_token_id or 151643,
+            "eos_token_id": eos_ids,
         }
         if do_sample:
             gen_kwargs["do_sample"] = True
@@ -301,6 +344,7 @@ def run_single_inference(
             "transfer_mb": round(m.get("total_transfer_bytes", 0) / 1e6, 2),
             "peak_vram_mb": round(peak_vram_mb, 1),
             "prefetch_precision": round(sched.get("prefetch_precision", 0.0), 4) if spec["enable_prefetch"] else 0.0,
+            "memory_constraint_mb": spec["hbm_budget_mb"],
             "timestamp": time.strftime("%H:%M:%S"),
         }
 
@@ -378,7 +422,27 @@ class MemTierRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/run":
             prompt = payload.get("prompt", "Mixture of Experts architecture enables efficient scaling.")
             baseline_id = payload.get("baseline_id", "hybrid_sota_600")
-            max_tokens = int(payload.get("max_tokens", 25))
+            raw_tokens = payload.get("max_tokens", 25)
+            if raw_tokens is None or raw_tokens == "" or str(raw_tokens).lower() in ("unlimited", "none", "auto", "0"):
+                max_tokens = 0
+            else:
+                try:
+                    max_tokens = int(raw_tokens)
+                except (ValueError, TypeError):
+                    max_tokens = 0
+
+            raw_mem = payload.get("memory_constraint_mb") or payload.get("hbm_budget_mb")
+            if str(raw_mem).lower() in ("unconstrained", "full", "max"):
+                memory_constraint_mb = 2500
+            elif raw_mem is None or str(raw_mem).lower() in ("none", "auto"):
+                memory_constraint_mb = None
+            else:
+                try:
+                    val = int(raw_mem)
+                    memory_constraint_mb = 2500 if val <= 0 else val
+                except (ValueError, TypeError):
+                    memory_constraint_mb = None
+
             do_sample = bool(payload.get("do_sample", False))
             temperature = float(payload.get("temperature", 0.7))
             top_p = float(payload.get("top_p", 0.9))
@@ -391,6 +455,7 @@ class MemTierRequestHandler(SimpleHTTPRequestHandler):
                     do_sample=do_sample,
                     temperature=temperature,
                     top_p=top_p,
+                    memory_constraint_mb=memory_constraint_mb,
                 )
                 self.send_json_response(res)
             except Exception as e:
@@ -401,16 +466,41 @@ class MemTierRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/compare":
             prompt = payload.get("prompt", "Mixture of Experts architecture enables efficient scaling.")
-            max_tokens = int(payload.get("max_tokens", 25))
+            raw_tokens = payload.get("max_tokens", 25)
+            if raw_tokens is None or raw_tokens == "" or str(raw_tokens).lower() in ("unlimited", "none", "auto", "0"):
+                max_tokens = 0
+            else:
+                try:
+                    max_tokens = int(raw_tokens)
+                except (ValueError, TypeError):
+                    max_tokens = 0
+
+            raw_mem = payload.get("memory_constraint_mb") or payload.get("hbm_budget_mb")
+            if str(raw_mem).lower() in ("unconstrained", "full", "max"):
+                memory_constraint_mb = 2500
+            elif raw_mem is None or str(raw_mem).lower() in ("none", "auto"):
+                memory_constraint_mb = None
+            else:
+                try:
+                    val = int(raw_mem)
+                    memory_constraint_mb = 2500 if val <= 0 else val
+                except (ValueError, TypeError):
+                    memory_constraint_mb = None
+
             selected_ids = payload.get("baselines", [b["id"] for b in BASELINE_SPECS])
 
             results = []
             try:
                 for b_id in selected_ids:
-                    print(f"[Server] Running comparison baseline: {b_id}")
-                    r = run_single_inference(prompt=prompt, baseline_id=b_id, max_new_tokens=max_tokens)
+                    print(f"[Server] Running comparison baseline: {b_id} (mem constraint: {memory_constraint_mb} MB)")
+                    r = run_single_inference(
+                        prompt=prompt,
+                        baseline_id=b_id,
+                        max_new_tokens=max_tokens,
+                        memory_constraint_mb=memory_constraint_mb,
+                    )
                     results.append(r)
-                self.send_json_response({"prompt": prompt, "results": results})
+                self.send_json_response({"prompt": prompt, "results": results, "memory_constraint_mb": memory_constraint_mb})
             except Exception as e:
                 import traceback
                 traceback.print_exc()

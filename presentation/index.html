@@ -35,7 +35,7 @@
         </div>
         <div class="telemetry-pill">
           <span class="pill-label">Model:</span>
-          <span class="pill-val">Qwen1.5-4x0.5B-MoE</span>
+          <span class="pill-val">Qwen1.5-4x0.5B-Chat-MoE</span>
         </div>
         <div class="telemetry-pill success-pill">
           <span class="pill-label">Integrity:</span>
@@ -97,27 +97,66 @@
             </div>
           </div>
 
-          <!-- Config Controls Row -->
+          <!-- Config Controls Row 1: Baseline & Memory Constraint -->
           <div class="controls-row">
             <div class="control-group">
-              <label for="baseline-select">Baseline Architecture</label>
+              <label for="baseline-select">Execution Mode / Baseline</label>
               <div class="select-wrap">
                 <select id="baseline-select">
-                  <option value="hybrid_sota_600" selected>Hybrid SOTA (Fiddler 600MB) [Recommended]</option>
-                  <option value="two_tier_600">Two-Tier (Weight Transfer 600MB)</option>
-                  <option value="lookahead_600">Lookahead Pre-Gating (600MB)</option>
-                  <option value="hybrid_sota_900">Hybrid SOTA (Fiddler 900MB)</option>
+                  <option value="all_sequential" selected>⚡ All 5 Baselines Sequentially (Full Comparison Matrix)</option>
+                  <option value="hybrid_sota_600">Hybrid SOTA (Activation Offload) [Recommended]</option>
+                  <option value="two_tier_600">Two-Tier (Weight Transfer)</option>
+                  <option value="lookahead_600">Lookahead Pre-Gating</option>
+                  <option value="hybrid_sota_900">Hybrid SOTA (Dynamic Headroom)</option>
                   <option value="gpu_resident">GPU-Resident (Full VRAM 2.5GB)</option>
                 </select>
               </div>
             </div>
 
-            <div class="control-group token-slider-group">
+            <div class="control-group memory-slider-group">
               <div class="label-with-val">
-                <label for="tokens-slider">New Tokens to Generate</label>
-                <span class="slider-badge" id="tokens-val">25</span>
+                <label for="memory-slider">GPU Memory Constraint (HBM)</label>
+                <span class="slider-badge" id="memory-val">600 MB</span>
               </div>
-              <input type="range" id="tokens-slider" min="10" max="50" value="25" step="5" />
+              <div class="unlimited-toggle-row">
+                <label class="unlimited-checkbox-label" for="unconstrained-memory-checkbox">
+                  <input type="checkbox" id="unconstrained-memory-checkbox" />
+                  <span>♾️ Unconstrained VRAM (Full Residency)</span>
+                </label>
+              </div>
+              <input type="range" id="memory-slider" min="300" max="2500" value="600" step="50" />
+              <div class="quick-memory-chips" id="quick-memory-chips">
+                <button type="button" class="memory-chip" data-memory="300">300 MB</button>
+                <button type="button" class="memory-chip active" data-memory="600">600 MB (Default)</button>
+                <button type="button" class="memory-chip" data-memory="900">900 MB</button>
+                <button type="button" class="memory-chip" data-memory="1500">1500 MB</button>
+                <button type="button" class="memory-chip" data-memory="unconstrained">♾️ Full</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Config Controls Row 2: Token Ceiling -->
+          <div class="controls-row token-row">
+            <div class="control-group token-slider-group full-width-group">
+              <div class="label-with-val">
+                <label for="tokens-slider">Output Token Ceiling</label>
+                <span class="slider-badge" id="tokens-val">64</span>
+              </div>
+              <div class="unlimited-toggle-row">
+                <label class="unlimited-checkbox-label" for="unlimited-tokens-checkbox">
+                  <input type="checkbox" id="unlimited-tokens-checkbox" />
+                  <span>♾️ Unlimited (Auto EOS / Complete Answer)</span>
+                </label>
+              </div>
+              <input type="range" id="tokens-slider" min="16" max="1024" value="64" step="16" />
+              <div class="quick-token-chips" id="quick-token-chips">
+                <button type="button" class="token-chip" data-tokens="32">32</button>
+                <button type="button" class="token-chip active" data-tokens="64">64 (Default)</button>
+                <button type="button" class="token-chip" data-tokens="128">128</button>
+                <button type="button" class="token-chip" data-tokens="256">256</button>
+                <button type="button" class="token-chip" data-tokens="512">512</button>
+                <button type="button" class="token-chip" data-tokens="unlimited">♾️ Auto</button>
+              </div>
             </div>
           </div>
 
@@ -136,17 +175,17 @@
 
           <!-- Action Buttons -->
           <div class="button-action-grid">
-            <button id="btn-run-single" class="btn btn-primary">
+            <button id="btn-run-all" class="btn btn-primary">
               <span class="btn-icon">▶</span>
-              <span class="btn-text">Run Prompt (Active Baseline)</span>
+              <span class="btn-text">Run All Baselines Sequentially (Full Benchmark Matrix)</span>
             </button>
-            <button id="btn-run-compare" class="btn btn-secondary">
-              <span class="btn-icon">⚖️</span>
-              <span class="btn-text">Run Live Baseline Comparison Matrix</span>
+            <button id="btn-run-single" class="btn btn-secondary">
+              <span class="btn-icon">⚡</span>
+              <span class="btn-text" id="btn-single-text">Run Single Active Baseline</span>
             </button>
             <button id="btn-load-verified" class="btn btn-tertiary">
               <span class="btn-icon">📊</span>
-              <span class="btn-text">Load Verified Hardware Benchmarks</span>
+              <span class="btn-text">Reset to Verified Hardware Benchmarks</span>
             </button>
           </div>
 
@@ -209,7 +248,7 @@
           </div>
 
           <div class="model-note-banner">
-            🔬 <strong>Research Checkpoint:</strong> <code>nopainkiller/Qwen1.5-4x0.5B-MoE</code> is a systems-research MoE verifying physical expert routing, 3-tier memory allocation, and PCIe bus telemetry.
+            🚀 <strong>Model:</strong> <code>Qwen1.5-4x0.5B-Chat-MoE</code> (Instruction-Tuned, 4 Experts, Top-2 Routing) with preserved attention projection biases, producing coherent reasoning while exercising MemTier-MoE 3-tier memory offloading.
           </div>
         </section>
       </div>

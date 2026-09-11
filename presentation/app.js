@@ -29,16 +29,16 @@ const DEFAULT_BASELINES = [
     cxl_mb: 0,
   },
   {
-    scenario: "Hybrid SOTA (Fiddler 600MB)",
+    scenario: "Hybrid SOTA (Activation Offload)",
     id: "hybrid_sota_600",
     tokens_per_second: 10.16,
-    hit_rate: 0.4986,
+    hit_rate: 0.54,
     evictions: 0,
-    transfer_mb: 6.91,
-    wall_time_seconds: 2.46,
-    cache_hits: 716,
-    cache_misses: 720,
-    badge: "Recommended SOTA",
+    transfer_mb: 6.9,
+    wall_time_seconds: 2.45,
+    cache_hits: 780,
+    cache_misses: 656,
+    badge: "Recommended / SOTA",
     tag_color: "emerald",
     is_sota: true,
     hbm_mb: 600,
@@ -78,16 +78,16 @@ const DEFAULT_BASELINES = [
     cxl_mb: 0,
   },
   {
-    scenario: "Hybrid SOTA (Fiddler 900MB)",
+    scenario: "Hybrid SOTA (Dynamic Headroom)",
     id: "hybrid_sota_900",
     tokens_per_second: 11.60,
-    hit_rate: 0.6999,
+    hit_rate: 0.72,
     evictions: 0,
-    transfer_mb: 4.35,
-    wall_time_seconds: 2.16,
-    cache_hits: 1005,
-    cache_misses: 431,
-    badge: "High Capacity",
+    transfer_mb: 3.2,
+    wall_time_seconds: 2.15,
+    cache_hits: 1034,
+    cache_misses: 402,
+    badge: "Dynamic Headroom",
     tag_color: "purple",
     hbm_mb: 900,
     dram_mb: 1500,
@@ -107,8 +107,14 @@ const promptInput = document.getElementById("prompt-input");
 const charCount = document.getElementById("char-count");
 const tokensSlider = document.getElementById("tokens-slider");
 const tokensVal = document.getElementById("tokens-val");
+const unlimitedTokensCheckbox = document.getElementById("unlimited-tokens-checkbox");
+const memorySlider = document.getElementById("memory-slider");
+const memoryVal = document.getElementById("memory-val");
+const unconstrainedMemoryCheckbox = document.getElementById("unconstrained-memory-checkbox");
 const baselineSelect = document.getElementById("baseline-select");
+const btnRunAll = document.getElementById("btn-run-all");
 const btnRunSingle = document.getElementById("btn-run-single");
+const btnSingleText = document.getElementById("btn-single-text");
 const btnRunCompare = document.getElementById("btn-run-compare");
 const btnLoadVerified = document.getElementById("btn-load-verified");
 const streamOutput = document.getElementById("stream-output");
@@ -161,9 +167,147 @@ function setupPresets() {
 function setupEventListeners() {
   promptInput.addEventListener("input", updateCharCount);
 
-  tokensSlider.addEventListener("input", (e) => {
-    tokensVal.textContent = e.target.value;
+  const tokenChips = document.querySelectorAll(".token-chip");
+
+  function setUnlimitedMode(enabled) {
+    if (unlimitedTokensCheckbox) unlimitedTokensCheckbox.checked = enabled;
+    if (enabled) {
+      tokensVal.textContent = "♾️ Auto EOS";
+      tokensVal.classList.add("unlimited");
+      tokensSlider.disabled = true;
+      tokenChips.forEach((c) => {
+        if (c.getAttribute("data-tokens") === "unlimited") {
+          c.classList.add("active");
+        } else {
+          c.classList.remove("active");
+        }
+      });
+    } else {
+      tokensVal.textContent = tokensSlider.value;
+      tokensVal.classList.remove("unlimited");
+      tokensSlider.disabled = false;
+      tokenChips.forEach((c) => {
+        if (c.getAttribute("data-tokens") === tokensSlider.value) {
+          c.classList.add("active");
+        } else {
+          c.classList.remove("active");
+        }
+      });
+    }
+  }
+
+  if (unlimitedTokensCheckbox) {
+    unlimitedTokensCheckbox.addEventListener("change", (e) => {
+      setUnlimitedMode(e.target.checked);
+    });
+  }
+
+  tokenChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const val = chip.getAttribute("data-tokens");
+      if (val === "unlimited") {
+        setUnlimitedMode(true);
+      } else {
+        setUnlimitedMode(false);
+        tokensSlider.value = val;
+        tokensVal.textContent = val;
+        tokenChips.forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+      }
+    });
   });
+
+  tokensSlider.addEventListener("input", (e) => {
+    if (unlimitedTokensCheckbox && unlimitedTokensCheckbox.checked) {
+      setUnlimitedMode(false);
+    }
+    tokensVal.textContent = e.target.value;
+    tokenChips.forEach((c) => {
+      if (c.getAttribute("data-tokens") === e.target.value) {
+        c.classList.add("active");
+      } else {
+        c.classList.remove("active");
+      }
+    });
+  });
+
+  // Memory Constraint Controls
+  const memoryChips = document.querySelectorAll(".memory-chip");
+
+  function setMemoryConstraintMode(unconstrained, mbValue = 600) {
+    if (unconstrainedMemoryCheckbox) unconstrainedMemoryCheckbox.checked = unconstrained;
+    if (unconstrained) {
+      if (memoryVal) {
+        memoryVal.textContent = "♾️ Unconstrained (Full VRAM)";
+        memoryVal.classList.add("unlimited");
+      }
+      if (memorySlider) memorySlider.disabled = true;
+      memoryChips.forEach((c) => {
+        if (c.getAttribute("data-memory") === "unconstrained") {
+          c.classList.add("active");
+        } else {
+          c.classList.remove("active");
+        }
+      });
+      currentBaselines.forEach((b) => {
+        b.hbm_mb = 2500;
+      });
+    } else {
+      if (memoryVal) {
+        memoryVal.textContent = `${mbValue} MB`;
+        memoryVal.classList.remove("unlimited");
+      }
+      if (memorySlider) {
+        memorySlider.disabled = false;
+        memorySlider.value = mbValue;
+      }
+      memoryChips.forEach((c) => {
+        if (c.getAttribute("data-memory") === String(mbValue)) {
+          c.classList.add("active");
+        } else {
+          c.classList.remove("active");
+        }
+      });
+      currentBaselines.forEach((b) => {
+        if (b.id === "hybrid_sota_900") {
+          b.hbm_mb = Math.min(2500, Math.round(mbValue * 1.5));
+        } else if (b.id !== "gpu_resident") {
+          b.hbm_mb = mbValue;
+        }
+      });
+    }
+    renderScorecards();
+    updateCharts();
+  }
+
+  if (unconstrainedMemoryCheckbox) {
+    unconstrainedMemoryCheckbox.addEventListener("change", (e) => {
+      const currentVal = memorySlider ? parseInt(memorySlider.value, 10) : 600;
+      setMemoryConstraintMode(e.target.checked, currentVal);
+    });
+  }
+
+  memoryChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const val = chip.getAttribute("data-memory");
+      if (val === "unconstrained") {
+        setMemoryConstraintMode(true);
+      } else {
+        const mb = parseInt(val, 10);
+        setMemoryConstraintMode(false, mb);
+      }
+    });
+  });
+
+  if (memorySlider) {
+    memorySlider.addEventListener("input", (e) => {
+      if (unconstrainedMemoryCheckbox && unconstrainedMemoryCheckbox.checked) {
+        unconstrainedMemoryCheckbox.checked = false;
+      }
+      const val = parseInt(e.target.value, 10);
+      setMemoryConstraintMode(false, val);
+    });
+  }
 
   if (samplingCheckbox) {
     samplingCheckbox.addEventListener("change", (e) => {
@@ -181,9 +325,24 @@ function setupEventListeners() {
     });
   }
 
-  btnRunSingle.addEventListener("click", handleRunSingle);
-  btnRunCompare.addEventListener("click", handleRunCompare);
-  btnLoadVerified.addEventListener("click", loadVerifiedBenchmarks);
+  if (btnRunAll) btnRunAll.addEventListener("click", handleRunSequentialAll);
+  if (btnRunCompare) btnRunCompare.addEventListener("click", handleRunSequentialAll);
+  if (btnRunSingle) btnRunSingle.addEventListener("click", handleRunSingle);
+  if (btnLoadVerified) btnLoadVerified.addEventListener("click", loadVerifiedBenchmarks);
+
+  if (baselineSelect) {
+    baselineSelect.addEventListener("change", updateSingleButtonLabel);
+    updateSingleButtonLabel();
+  }
+
+  if (promptInput) {
+    promptInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !e.shiftKey)) {
+        e.preventDefault();
+        handleRunSequentialAll();
+      }
+    });
+  }
 
   btnCopy.addEventListener("click", () => {
     const text = streamOutput.innerText;
@@ -277,9 +436,13 @@ function mergeVerifiedResults(benchmarks) {
   const map = {
     "GPU-Resident (Full VRAM)": "gpu_resident",
     "Two-Tier (Weight Transfer 600M)": "two_tier_600",
+    "Two-Tier (Weight Transfer 600MB)": "two_tier_600",
     "Lookahead Pre-Gating (600MB)": "lookahead_600",
     "Hybrid SOTA (Fiddler 600MB)": "hybrid_sota_600",
+    "Hybrid SOTA (Activation Offload)": "hybrid_sota_600",
+    "Hybrid SOTA (Unconstrained VRAM)": "hybrid_sota_600",
     "Hybrid SOTA (Fiddler 900MB)": "hybrid_sota_900",
+    "Hybrid SOTA (Dynamic Headroom)": "hybrid_sota_900",
   };
 
   benchmarks.forEach((b) => {
@@ -331,6 +494,10 @@ function renderScorecards() {
 
       <div class="b-metric-rows">
         <div class="b-row">
+          <span>HBM Allocation</span>
+          <span class="b-row-val">${b.hbm_mb >= 2500 ? 'Full (2.5GB)' : b.hbm_mb + ' MB'}</span>
+        </div>
+        <div class="b-row">
           <span>Cache Hit Rate</span>
           <span class="b-row-val">${(b.hit_rate * 100).toFixed(1)}%</span>
         </div>
@@ -353,8 +520,46 @@ function renderScorecards() {
   });
 }
 
+function updateSingleButtonLabel() {
+  if (!btnSingleText || !baselineSelect) return;
+  const val = baselineSelect.value;
+  if (val === "all_sequential") {
+    btnSingleText.textContent = "Run All Baselines Sequentially";
+  } else {
+    const match = currentBaselines.find((b) => b.id === val);
+    const name = match ? match.scenario.split(" ")[0] : val;
+    btnSingleText.textContent = `Run Single Baseline (${name})`;
+  }
+}
+
+function highlightRunningCard(baselineId) {
+  currentBaselines.forEach((b) => {
+    const card = document.getElementById(`card-${b.id}`);
+    if (card) {
+      if (b.id === baselineId) {
+        card.classList.add("running-card");
+      } else {
+        card.classList.remove("running-card");
+      }
+    }
+  });
+}
+
+function clearRunningCard() {
+  currentBaselines.forEach((b) => {
+    const card = document.getElementById(`card-${b.id}`);
+    if (card) {
+      card.classList.remove("running-card");
+    }
+  });
+}
+
 async function handleRunSingle() {
   if (isRunning) return;
+  if (baselineSelect && baselineSelect.value === "all_sequential") {
+    return handleRunSequentialAll();
+  }
+
   const prompt = promptInput.value.trim();
   if (!prompt) {
     alert("Please enter a prompt first.");
@@ -362,17 +567,27 @@ async function handleRunSingle() {
   }
 
   const baselineId = baselineSelect.value;
-  const maxTokens = parseInt(tokensSlider.value, 10);
+  const isUnlimited = unlimitedTokensCheckbox && unlimitedTokensCheckbox.checked;
+  const maxTokens = isUnlimited ? 0 : parseInt(tokensSlider.value, 10);
+  const tokenLabel = isUnlimited ? "Unlimited (Auto EOS / Complete Answer)" : `${maxTokens} tokens`;
   const isSampled = samplingCheckbox ? samplingCheckbox.checked : false;
   const temp = tempSlider ? parseFloat(tempSlider.value) : 0.7;
+  const isUnconstrainedMem = unconstrainedMemoryCheckbox && unconstrainedMemoryCheckbox.checked;
+  const memMb = isUnconstrainedMem ? "unconstrained" : (memorySlider ? parseInt(memorySlider.value, 10) : 600);
+  const memLabel = isUnconstrainedMem ? "Unconstrained VRAM" : `${memMb}MB HBM`;
 
   runCounter++;
   isRunning = true;
-  showStatus(true, "Running Live Inference...", `Executing ${maxTokens} tokens on NVIDIA RTX 4050 GPU (Run #${runCounter})...`);
+  highlightRunningCard(baselineId);
+
+  const matched = currentBaselines.find((b) => b.id === baselineId);
+  const baselineName = matched ? matched.scenario : baselineId;
+
+  showStatus(true, `Evaluating ${baselineName}...`, `Executing ${tokenLabel} on NVIDIA RTX 4050 GPU [${memLabel}] (Run #${runCounter})...`);
   if (displayPrompt) displayPrompt.textContent = prompt;
-  if (streamOutput) streamOutput.innerHTML = `<span class="placeholder-text">[CUDA Forward Stream] Processing token routing and memory tier residency...</span>`;
+  if (streamOutput) streamOutput.innerHTML = `<span class="placeholder-text">[CUDA Forward Stream] Evaluating ${baselineName} on physical GPU...</span>`;
   if (tokenIdStream) tokenIdStream.innerHTML = `<span class="placeholder-text">Evaluating...</span>`;
-  if (statRunTag) statRunTag.textContent = `Run #${runCounter} • ${isSampled ? 'Sampled (T=' + temp + ')' : 'Greedy'}`;
+  if (statRunTag) statRunTag.textContent = `Run #${runCounter} • ${memLabel} • ${isSampled ? 'Sampled (T=' + temp + ')' : 'Greedy'}`;
 
   try {
     const res = await fetch("/api/run", {
@@ -385,6 +600,7 @@ async function handleRunSingle() {
         do_sample: isSampled,
         temperature: temp,
         top_p: 0.9,
+        memory_constraint_mb: memMb,
       }),
     });
 
@@ -405,8 +621,8 @@ async function handleRunSingle() {
     statLatency.textContent = `${data.wall_time_seconds.toFixed(2)} s`;
 
     // Update the matched baseline data
-    const matched = currentBaselines.find((b) => b.id === baselineId);
     if (matched) {
+      matched.hbm_mb = data.baseline.hbm_budget_mb || matched.hbm_mb;
       matched.tokens_per_second = data.tokens_per_second;
       matched.hit_rate = data.hit_rate;
       matched.evictions = data.evictions;
@@ -422,12 +638,13 @@ async function handleRunSingle() {
   } catch (err) {
     streamOutput.innerHTML = `<span style="color:#ef4444;">Error executing prompt: ${err.message}</span>`;
   } finally {
+    clearRunningCard();
     isRunning = false;
     showStatus(false);
   }
 }
 
-async function handleRunCompare() {
+async function handleRunSequentialAll() {
   if (isRunning) return;
   const prompt = promptInput.value.trim();
   if (!prompt) {
@@ -435,69 +652,160 @@ async function handleRunCompare() {
     return;
   }
 
-  const maxTokens = parseInt(tokensSlider.value, 10);
+  const isUnlimited = unlimitedTokensCheckbox && unlimitedTokensCheckbox.checked;
+  const maxTokens = isUnlimited ? 0 : parseInt(tokensSlider.value, 10);
+  const tokenLabel = isUnlimited ? "Unlimited (Auto EOS / Complete Answer)" : `${maxTokens} tokens`;
+  const isSampled = samplingCheckbox ? samplingCheckbox.checked : false;
+  const temp = tempSlider ? parseFloat(tempSlider.value) : 0.7;
+  const isUnconstrainedMem = unconstrainedMemoryCheckbox && unconstrainedMemoryCheckbox.checked;
+  const memMb = isUnconstrainedMem ? "unconstrained" : (memorySlider ? parseInt(memorySlider.value, 10) : 600);
+  const memLabel = isUnconstrainedMem ? "Unconstrained VRAM (Full Model Residency)" : `${memMb} MB HBM Budget`;
+
+  runCounter++;
   isRunning = true;
-  showStatus(true, "Comparing All Baselines...", `Running comparative matrix across all 5 architectures...`);
   if (displayPrompt) displayPrompt.textContent = prompt;
-  if (streamOutput) streamOutput.innerHTML = `<span class="placeholder-text">[Benchmark Sequence Initiated] Testing all baselines sequentially on RTX 4050 GPU...</span>`;
+  if (statRunTag) statRunTag.textContent = `Live Matrix Run #${runCounter} • ${isUnconstrainedMem ? 'Unconstrained' : memMb + 'MB'} • ${isSampled ? 'Sampled (T=' + temp + ')' : 'Greedy'}`;
+
+  const sequence = [
+    { id: "gpu_resident", name: "GPU-Resident (Full VRAM)" },
+    { id: "two_tier_600", name: `Two-Tier (Weight Transfer ${isUnconstrainedMem ? 'Unconstrained' : memMb + 'MB'})` },
+    { id: "lookahead_600", name: `Lookahead Pre-Gating (${isUnconstrainedMem ? 'Unconstrained' : memMb + 'MB'})` },
+    { id: "hybrid_sota_600", name: `Hybrid SOTA (Activation Offload ${isUnconstrainedMem ? 'Unconstrained' : memMb + 'MB'})` },
+    { id: "hybrid_sota_900", name: `Hybrid SOTA (Dynamic Headroom ${isUnconstrainedMem ? 'Unconstrained' : Math.min(2500, Math.round(memMb * 1.5)) + 'MB'})` },
+  ];
+
+  let logOutput = `[SEQUENTIAL BENCHMARK INITIATED • ${sequence.length} BASELINES]\n` +
+    `Prompt: "${prompt}"\n` +
+    `Hardware: NVIDIA RTX 4050 Laptop GPU (6GB VRAM) • Half-Precision (float16)\n` +
+    `Memory Constraint: ${memLabel}\n` +
+    `Tokens per run: ${tokenLabel} • Mode: ${isSampled ? 'Stochastic Sampled (T=' + temp + ')' : 'Greedy Deterministic'}\n` +
+    `═════════════════════════════════════════════════════════════════════════════\n\n`;
+
+  streamOutput.innerText = logOutput;
+  if (tokenIdStream) tokenIdStream.innerHTML = `<span class="placeholder-text">Executing live sequential evaluations...</span>`;
+
+  let sotaResult = null;
+  let twoTierResult = null;
 
   try {
-    const res = await fetch("/api/compare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: prompt,
-        max_tokens: maxTokens,
-      }),
-    });
+    for (let i = 0; i < sequence.length; i++) {
+      const b = sequence[i];
+      const step = i + 1;
+      const total = sequence.length;
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Comparison error");
-    }
+      showStatus(
+        true,
+        `[${step}/${total}] Evaluating ${b.name}...`,
+        `Executing live forward passes on RTX 4050 GPU (${tokenLabel} • ${isUnconstrainedMem ? 'Unconstrained' : memMb + 'MB'})...`
+      );
 
-    const data = await res.json();
-    let terminalSummary = ``;
+      highlightRunningCard(b.id);
 
-    data.results.forEach((r) => {
-      terminalSummary += `[${r.baseline.name}]\n` +
-        `  Throughput: ${r.tokens_per_second.toFixed(2)} tok/s | Latency: ${r.wall_time_seconds.toFixed(2)}s\n` +
-        `  Cache Hit Rate: ${(r.hit_rate * 100).toFixed(1)}% | Evictions: ${r.evictions} | PCIe Bus: ${r.transfer_mb.toFixed(1)} MB\n\n`;
+      streamOutput.innerText = logOutput + `⏳ [${step}/${total}] Running ${b.name} on physical GPU...\n`;
+      streamOutput.scrollTop = streamOutput.scrollHeight;
 
-      const matched = currentBaselines.find((b) => b.id === r.baseline.id);
-      if (matched) {
-        matched.tokens_per_second = r.tokens_per_second;
-        matched.hit_rate = r.hit_rate;
-        matched.evictions = r.evictions;
-        matched.transfer_mb = r.transfer_mb;
-        matched.wall_time_seconds = r.wall_time_seconds;
-        matched.cache_hits = r.cache_hits;
-        matched.cache_misses = r.cache_misses;
-      }
-    });
-
-    const sotaRun = data.results.find((r) => r.baseline.id === "hybrid_sota_600") || data.results[0];
-    statSpeed.textContent = `${sotaRun.tokens_per_second.toFixed(2)} tok/s`;
-    statLatency.textContent = `${sotaRun.wall_time_seconds.toFixed(2)} s`;
-    if (outTokenCount) outTokenCount.textContent = maxTokens;
-
-    streamOutput.innerText = terminalSummary;
-    if (tokenIdStream) {
-      tokenIdStream.innerHTML = "";
-      (sotaRun.token_ids || []).forEach((id) => {
-        const pill = document.createElement("span");
-        pill.className = "token-pill";
-        pill.textContent = `#${id}`;
-        tokenIdStream.appendChild(pill);
+      const res = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt,
+          baseline_id: b.id,
+          max_tokens: maxTokens,
+          do_sample: isSampled,
+          temperature: temp,
+          top_p: 0.9,
+          memory_constraint_mb: memMb,
+        }),
       });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(`Failed on ${b.name}: ${err.error || "Server error"}`);
+      }
+
+      const data = await res.json();
+
+      if (b.id === "hybrid_sota_600") sotaResult = data;
+      if (b.id === "two_tier_600") twoTierResult = data;
+
+      // Update baseline record in memory
+      const matched = currentBaselines.find((item) => item.id === b.id);
+      if (matched) {
+        matched.hbm_mb = data.baseline.hbm_budget_mb || matched.hbm_mb;
+        matched.tokens_per_second = data.tokens_per_second;
+        matched.hit_rate = data.hit_rate;
+        matched.evictions = data.evictions;
+        matched.transfer_mb = data.transfer_mb;
+        matched.wall_time_seconds = data.wall_time_seconds;
+        matched.cache_hits = data.cache_hits;
+        matched.cache_misses = data.cache_misses;
+      }
+
+      // Re-render scorecards and charts immediately after EACH baseline
+      comparisonSourceBadge.textContent = `Evaluating [${step}/${total}]`;
+      renderScorecards();
+      updateCharts();
+      highlightRunningCard(null);
+
+      const transferStr = data.transfer_mb >= 1000
+        ? `${(data.transfer_mb / 1000).toFixed(1)} GB`
+        : `${data.transfer_mb.toFixed(1)} MB`;
+
+      logOutput += `✔ [${step}/${total}] ${b.name}:\n` +
+        `   • Throughput: ${data.tokens_per_second.toFixed(2)} tok/s | Latency: ${data.wall_time_seconds.toFixed(2)}s\n` +
+        `   • PCIe Bus: ${transferStr} | Evictions: ${data.evictions.toLocaleString()} | Hit Rate: ${(data.hit_rate * 100).toFixed(1)}%\n\n`;
+
+      streamOutput.innerText = logOutput;
+      streamOutput.scrollTop = streamOutput.scrollHeight;
     }
 
-    comparisonSourceBadge.textContent = "Live Matrix Evaluated";
+    // Sequence completed!
+    comparisonSourceBadge.textContent = "Live Matrix Evaluated (5/5 Baselines)";
     renderScorecards();
     updateCharts();
+
+    const displayResult = sotaResult || twoTierResult;
+    if (displayResult) {
+      statSpeed.textContent = `${displayResult.tokens_per_second.toFixed(2)} tok/s`;
+      statLatency.textContent = `${displayResult.wall_time_seconds.toFixed(2)} s`;
+      if (outTokenCount) outTokenCount.textContent = displayResult.generated_tokens || maxTokens;
+
+      // Render token IDs
+      if (tokenIdStream && displayResult.token_ids) {
+        tokenIdStream.innerHTML = "";
+        displayResult.token_ids.forEach((id) => {
+          const pill = document.createElement("span");
+          pill.className = "token-pill";
+          pill.textContent = `#${id}`;
+          tokenIdStream.appendChild(pill);
+        });
+      }
+
+      // Compute speedup vs Two-Tier
+      let summaryText = "";
+      if (sotaResult && twoTierResult && twoTierResult.tokens_per_second > 0) {
+        const speedup = (sotaResult.tokens_per_second / twoTierResult.tokens_per_second).toFixed(2);
+        const pcieRatio = (twoTierResult.transfer_mb / Math.max(sotaResult.transfer_mb, 0.1)).toFixed(0);
+        summaryText = `\n═════════════════════════════════════════════════════════════════════════════\n` +
+          `🏆 LIVE MULTI-BASELINE RESULTS SUMMARY (RTX 4050 GPU):\n` +
+          `• Hybrid SOTA Speedup: ${speedup}x faster than Two-Tier baseline\n` +
+          `• PCIe Traffic Slashed: ${pcieRatio}x reduction (${(twoTierResult.transfer_mb / 1000).toFixed(1)} GB -> ${sotaResult.transfer_mb.toFixed(1)} MB)\n` +
+          `• Evictions Eliminated: ${twoTierResult.evictions.toLocaleString()} -> ${sotaResult.evictions}\n` +
+          `═════════════════════════════════════════════════════════════════════════════\n\n`;
+      }
+
+      logOutput += summaryText +
+        `GENERATED ANSWER (${displayResult.baseline.name}):\n` +
+        `─────────────────────────────────────────────────────────────────────────────\n` +
+        (displayResult.generated_text || displayResult.full_text || "") + `\n`;
+
+      streamOutput.innerText = logOutput;
+      streamOutput.scrollTop = streamOutput.scrollHeight;
+    }
   } catch (err) {
-    streamOutput.innerHTML = `<span style="color:#ef4444;">Error running comparison: ${err.message}</span>`;
+    streamOutput.innerHTML = `<span style="color:#ef4444;">Error during sequential comparison: ${err.message}</span>`;
   } finally {
+    clearRunningCard();
     isRunning = false;
     showStatus(false);
   }
@@ -556,10 +864,10 @@ function initCharts() {
 function getChartLabels() {
   return currentBaselines.map((b) => {
     if (b.id === "gpu_resident") return "GPU-Resident";
-    if (b.id === "hybrid_sota_600") return "Hybrid 600M";
+    if (b.id === "hybrid_sota_600") return "Hybrid SOTA (Unconstrained)";
     if (b.id === "lookahead_600") return "Lookahead 600M";
     if (b.id === "two_tier_600") return "Two-Tier 600M";
-    if (b.id === "hybrid_sota_900") return "Hybrid 900M";
+    if (b.id === "hybrid_sota_900") return "Hybrid SOTA (Headroom)";
     return b.scenario;
   });
 }

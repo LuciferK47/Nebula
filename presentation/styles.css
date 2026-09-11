@@ -427,6 +427,49 @@ textarea#prompt-input:focus {
   background: rgba(56, 189, 248, 0.12);
   padding: 2px 8px;
   border-radius: 4px;
+  transition: var(--transition-smooth);
+}
+
+.slider-badge.unlimited {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+}
+
+.unlimited-toggle-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.unlimited-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  user-select: none;
+  transition: var(--transition-smooth);
+}
+
+.unlimited-checkbox-label:hover {
+  color: #38bdf8;
+}
+
+.unlimited-checkbox-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #10b981;
+  cursor: pointer;
+}
+
+.slider-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  filter: grayscale(0.5);
 }
 
 input[type="range"] {
@@ -436,6 +479,53 @@ input[type="range"] {
   background: var(--surface-inner);
   height: 6px;
   border-radius: 3px;
+}
+
+.quick-token-chips,
+.quick-memory-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.token-chip,
+.memory-chip {
+  flex: 1;
+  min-width: 50px;
+  background: var(--surface-inner);
+  border: 1px solid var(--surface-border);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.token-chip:hover,
+.memory-chip:hover {
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+}
+
+.token-chip.active,
+.memory-chip.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.controls-row.token-row {
+  grid-template-columns: 1fr;
+  margin-bottom: 16px;
+}
+
+.full-width-group {
+  grid-column: 1 / -1;
 }
 
 .sampling-row {
@@ -856,6 +946,19 @@ input[type="range"] {
   border-color: rgba(16, 185, 129, 0.4);
   background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 23, 38, 0.85) 100%);
   box-shadow: 0 8px 30px var(--accent-emerald-glow);
+}
+
+.baseline-card.running-card {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.5) !important;
+  transform: translateY(-4px);
+  animation: pulseRunningCard 1.2s infinite ease-in-out;
+}
+
+@keyframes pulseRunningCard {
+  0% { box-shadow: 0 0 10px rgba(56, 189, 248, 0.25); }
+  50% { box-shadow: 0 0 28px rgba(56, 189, 248, 0.65); }
+  100% { box-shadow: 0 0 10px rgba(56, 189, 248, 0.25); }
 }
 
 .b-card-header {
