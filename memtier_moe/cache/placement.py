@@ -78,7 +78,7 @@ class PlacementPolicy:
             return MemoryTier.CXL
 
         # Absolute fallback — try DRAM even without reserve headroom
-        logger.warning(
+        logger.debug(
             f"Placement {expert.expert_id}: DRAM (forced — CXL also full)"
         )
         return MemoryTier.DRAM

@@ -47,7 +47,34 @@ class BenchmarkResult:
     total_transfer_bytes: int
     total_transfer_time_ms: float
     wall_time_seconds: float
-    tokens_per_second: float
+    tokens_per_second: float  # Modeled/simulated pipeline throughput
+    simulation_wallclock_tokens_per_second: float = 0.0  # Python simulation loop throughput (not real model inference)
+    measured_tokens_per_second: float = 0.0  # Kept as alias for backward compatibility
+
+    # First-class hierarchical memory tier & CXL expansion metrics
+    hbm_hit_rate: float = 0.0
+    dram_hit_rate: float = 0.0
+    cxl_hit_rate: float = 0.0
+    disk_fault_rate: float = 0.0
+    hbm_hits: int = 0
+    dram_hits: int = 0
+    cxl_hits: int = 0
+    disk_faults: int = 0
+    msr: float = 1.0
+    dsar_pct: float = 100.0
+    amat_ns: float = 28.0
+    cxl_transfer_mb: float = 0.0
+    dram_budget_gb: float = 2.0
+    cxl_capacity_gb: float = 32.0
+    cxl_usage_gb: float = 0.0
+
+    # Methodology metadata: explicit classification of how each metric was produced
+    benchmark_mode: str = "simulation"  # "simulation" or "live"
+    computation_type: str = "modeled"  # "modeled" (calibrated analytical latency) or "measured" (real forward pass)
+    transfer_latency_type: str = "modeled"  # "modeled" (calibrated latency/bandwidth) or "measured" (CUDA events)
+    cxl_type: str = "emulated"  # "emulated" (host RAM with delay/rate limiting) or "physical"
+    hardware_device: str = "NVIDIA GeForce RTX 4050 Laptop GPU (6GB GDDR6)"
+
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -57,26 +84,27 @@ class BenchmarkMatrix:
     results: List[BenchmarkResult] = field(default_factory=list)
 
     def to_table(self) -> str:
-        """Format results as a text table."""
+        """Format results as a rich CXL-aware memory tiering text table."""
         if not self.results:
             return "No results."
 
         header = (
-            f"{'Baseline':<25} {'Domain':<10} {'HBM(GB)':<8} "
-            f"{'HitRate':<8} {'Hits':<7} {'Miss':<7} "
-            f"{'PrefPrec':<9} {'tok/s':<8} {'Wall(s)':<8}"
+            f"{'Baseline':<24} {'Domain':<8} {'HBM(GB)':<7} "
+            f"{'H_HBM':<7} {'H_DRAM':<7} {'H_CXL':<7} {'H_Disk':<7} "
+            f"{'AMAT(ns)':<9} {'DSAR(%)':<8} {'SimWallTok/s':<13} {'ModPipeTok/s':<13} {'Wall(s)':<7}"
         )
         lines = [header, "-" * len(header)]
 
         for r in self.results:
             line = (
-                f"{r.baseline_name:<25} {r.domain:<10} "
-                f"{r.hbm_budget_gb:<8.1f} "
-                f"{r.cache_hit_rate:<8.3f} {r.cache_hits:<7} "
-                f"{r.cache_misses:<7} "
-                f"{r.prefetch_precision:<9.3f} "
-                f"{r.tokens_per_second:<8.1f} "
-                f"{r.wall_time_seconds:<8.2f}"
+                f"{r.baseline_name:<24} {r.domain:<8} "
+                f"{r.hbm_budget_gb:<7.1f} "
+                f"{r.hbm_hit_rate:<7.1%} {r.dram_hit_rate:<7.1%} "
+                f"{r.cxl_hit_rate:<7.1%} {r.disk_fault_rate:<7.1%} "
+                f"{r.amat_ns:<9.1f} {r.dsar_pct:<8.1f} "
+                f"{r.simulation_wallclock_tokens_per_second:<13.1f} "
+                f"{r.tokens_per_second:<13.1f} "
+                f"{r.wall_time_seconds:<7.2f}"
             )
             lines.append(line)
 
@@ -91,15 +119,39 @@ class BenchmarkMatrix:
                 "domain": r.domain,
                 "hbm_budget_gb": r.hbm_budget_gb,
                 "hit_rate": r.cache_hit_rate,
+                "hbm_hit_rate": r.hbm_hit_rate,
+                "dram_hit_rate": r.dram_hit_rate,
+                "cxl_hit_rate": r.cxl_hit_rate,
+                "disk_fault_rate": r.disk_fault_rate,
                 "hits": r.cache_hits,
+                "hbm_hits": r.hbm_hits,
+                "dram_hits": r.dram_hits,
+                "cxl_hits": r.cxl_hits,
+                "disk_faults": r.disk_faults,
+                "msr": r.msr,
+                "dsar_pct": r.dsar_pct,
+                "amat_ns": r.amat_ns,
+                "cxl_transfer_mb": r.cxl_transfer_mb,
+                "dram_budget_gb": r.dram_budget_gb,
+                "cxl_capacity_gb": r.cxl_capacity_gb,
+                "cxl_usage_gb": r.cxl_usage_gb,
                 "misses": r.cache_misses,
                 "evictions": r.evictions,
                 "prefetch_precision": r.prefetch_precision,
+                "simulation_wallclock_tokens_per_second": r.simulation_wallclock_tokens_per_second,
+                "measured_tokens_per_second": r.measured_tokens_per_second,
                 "tokens_per_second": r.tokens_per_second,
+                "simulated_pipeline_tokens_per_second": r.tokens_per_second,
                 "wall_time_s": r.wall_time_seconds,
+                "benchmark_mode": r.benchmark_mode,
+                "computation_type": r.computation_type,
+                "transfer_latency_type": r.transfer_latency_type,
+                "cxl_type": r.cxl_type,
+                "hardware_device": r.hardware_device,
             }
             for r in self.results
         ]
+
 
 
 class BenchmarkRunner:
@@ -208,10 +260,18 @@ class BenchmarkRunner:
             prefetch_total = int(stats.get("prefetch_total", 0))
 
         # Hardware-calibrated pipeline simulation:
-        # Base GPU computation latency calibrated to physical RTX 4050 (~85 ms per token = ~11.8 tok/s)
+        # Base GPU computation latency calibrated to physical RTX 4050:
+        #   - For Qwen1.5-4x0.5B (0.5B active params): ~85 ms per token = ~11.8 tok/s
+        #   - For Qwen1.5-MoE-A2.7B (2.7B active params): ~430 ms per token = ~2.32 tok/s
         num_layers = len(routing_decisions[0]) if num_tokens > 0 and len(routing_decisions) > 0 else 24
-        t_layer_compute_s = 0.085 / max(num_layers, 1)
-        total_compute_time_s = num_tokens * 0.085
+        max_exp_id = max((e[1] for e in self.expert_sizes.keys()), default=0)
+        if max_exp_id > 8:
+            t_compute_token_s = 0.430  # Calibrated to physical RTX 4050 on Qwen1.5-MoE-A2.7B (2.32 tok/s)
+        else:
+            t_compute_token_s = 0.085  # Calibrated to physical RTX 4050 on Qwen1.5-4x0.5B (11.76 tok/s)
+
+        t_layer_compute_s = t_compute_token_s / max(num_layers, 1)
+        total_compute_time_s = num_tokens * t_compute_token_s
 
         misses = report.get("cache_misses", 0)
         total_transfer_time_s = report.get("total_transfer_time_ms", 0.0) / 1000.0
@@ -237,6 +297,8 @@ class BenchmarkRunner:
         simulated_pipeline_time_s = total_compute_time_s + pipeline_stall_s
         simulated_tok_per_sec = num_tokens / simulated_pipeline_time_s if simulated_pipeline_time_s > 0 else 0.0
 
+        sim_wall_tok_s = num_tokens / wall_time if wall_time > 0 else 0.0
+
         return BenchmarkResult(
             baseline_name=baseline.name,
             baseline_type=baseline.baseline_type.value,
@@ -253,6 +315,28 @@ class BenchmarkRunner:
             total_transfer_time_ms=report.get("total_transfer_time_ms", 0.0),
             wall_time_seconds=wall_time,
             tokens_per_second=simulated_tok_per_sec,
+            simulation_wallclock_tokens_per_second=sim_wall_tok_s,
+            measured_tokens_per_second=sim_wall_tok_s,
+            hbm_hit_rate=report.get("hbm_hit_rate", report.get("hit_rate", 0.0)),
+            dram_hit_rate=report.get("dram_hit_rate", 0.0),
+            cxl_hit_rate=report.get("cxl_hit_rate", 0.0),
+            disk_fault_rate=report.get("disk_fault_rate", 0.0),
+            hbm_hits=report.get("hbm_hits", report.get("cache_hits", 0)),
+            dram_hits=report.get("dram_hits", 0),
+            cxl_hits=report.get("cxl_hits", 0),
+            disk_faults=report.get("disk_faults", 0),
+            msr=report.get("memory_service_rate", 1.0),
+            dsar_pct=report.get("dsar_pct", 100.0),
+            amat_ns=report.get("amat_ns", 28.0),
+            cxl_transfer_mb=report.get("cxl_transfer_mb", 0.0),
+            dram_budget_gb=config.host_dram_bytes / 1e9,
+            cxl_capacity_gb=config.cxl_memory_bytes / 1e9,
+            cxl_usage_gb=round(report.get("tier_summary", {}).get("cxl", {}).get("usage_bytes", 0) / 1e9, 2) if config.cxl_memory_bytes > 0 else 0.0,
+            benchmark_mode="simulation",
+            computation_type="modeled",
+            transfer_latency_type="modeled",
+            cxl_type="emulated",
+            hardware_device="NVIDIA GeForce RTX 4050 Laptop GPU (6GB GDDR6)",
             extra={
                 "simulated_pipeline_time_s": simulated_pipeline_time_s,
                 "python_wall_time_s": wall_time,

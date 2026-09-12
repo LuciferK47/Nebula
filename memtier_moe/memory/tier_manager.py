@@ -124,6 +124,9 @@ class TierManager:
 
         if tensor is None:
             current_pool = self.get_pool(current_tier)
+            if not current_pool.contains(expert_id):
+                logger.debug(f"Cannot promote {expert_id}: not present in {current_tier} pool")
+                return False
             tensor = current_pool.retrieve(expert_id)
             current_pool.evict(expert_id)
 
@@ -152,6 +155,13 @@ class TierManager:
             logger.warning(f"Cannot demote {expert_id} — already at lowest tier (CXL)")
             return None
 
+        target_pool = self.get_pool(target_tier)
+        if not target_pool.available_for(metadata.size_bytes):
+            raise RuntimeError(
+                f"Target tier {target_tier} has no room for expert {expert_id} "
+                f"({metadata.size_bytes}B required, {target_pool.free_bytes()}B free)"
+            )
+
         return self.demote_to(expert_id, target_tier)
 
     def demote_to(self, expert_id: ExpertId, target_tier: MemoryTier) -> Optional[Any]:
@@ -172,11 +182,18 @@ class TierManager:
         target_pool = self.get_pool(target_tier)
 
         if not target_pool.available_for(metadata.size_bytes):
-            raise RuntimeError(
-                f"Cannot demote {expert_id} from {current_tier} to {target_tier}: "
-                f"target tier full ({target_pool.usage_bytes()}/{target_pool.capacity_bytes} bytes used, "
-                f"need {metadata.size_bytes})."
-            )
+            # Cascade to CXL if DRAM is full and CXL has capacity
+            if target_tier == MemoryTier.DRAM and self.config.cxl_memory_bytes > 0:
+                cxl_pool = self.get_pool(MemoryTier.CXL)
+                if cxl_pool.available_for(metadata.size_bytes):
+                    return self.demote_to(expert_id, MemoryTier.CXL)
+
+            # Two-Tier / Out of Memory fallback: evict from current tier to secondary storage (disk swap)
+            tensor = current_pool.evict(expert_id)
+            metadata.current_tier = target_tier
+            self.metrics.record_demotion()
+            logger.debug(f"Demoted {expert_id} to disk swap (all memory tiers full)")
+            return tensor
 
         tensor = current_pool.evict(expert_id)
         if tensor is None:

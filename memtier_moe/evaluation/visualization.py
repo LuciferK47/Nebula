@@ -259,6 +259,84 @@ def plot_expert_heatmap(
     return output_path
 
 
+def plot_cxl_tier_breakdown(
+    results: List[Dict[str, Any]],
+    output_path: str = "cxl_tier_breakdown.png",
+    title: str = "CXL Tier-Decomposed Access Distribution & AMAT Comparison",
+) -> str:
+    """Stacked bar chart showing HBM, DRAM, CXL hits and disk faults alongside AMAT."""
+    _check_matplotlib()
+
+    # Filter or deduplicate scenarios by baseline name and domain
+    scenarios = []
+    seen = set()
+    for r in results:
+        key = (r["baseline"], r.get("domain", ""))
+        if key not in seen:
+            seen.add(key)
+            scenarios.append(r)
+
+    names = [f"{s['baseline']}\n({s.get('domain', '')})" for s in scenarios]
+    h_hbm = [s.get("hbm_hit_rate", s.get("hit_rate", 0.0)) * 100 for s in scenarios]
+    h_dram = [s.get("dram_hit_rate", 0.0) * 100 for s in scenarios]
+    h_cxl = [s.get("cxl_hit_rate", 0.0) * 100 for s in scenarios]
+    h_disk = [s.get("disk_fault_rate", 0.0) * 100 for s in scenarios]
+    amats = [max(s.get("amat_ns", 28.0), 1.0) for s in scenarios]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+    x = np.arange(len(scenarios))
+    width = 0.55
+
+    # Panel 1: Stacked Tier Breakdown
+    p1 = ax1.bar(x, h_hbm, width, label="HBM (GPU VRAM)", color="#1f77b4", edgecolor="#222")
+    p2 = ax1.bar(x, h_dram, width, bottom=h_hbm, label="DRAM (Host RAM)", color="#2ca02c", edgecolor="#222")
+    bottom_cxl = np.array(h_hbm) + np.array(h_dram)
+    p3 = ax1.bar(x, h_cxl, width, bottom=bottom_cxl, label="CXL 2.0/3.0 Expander Pool", color="#ff7f0e", edgecolor="#222")
+    bottom_disk = bottom_cxl + np.array(h_cxl)
+    p4 = ax1.bar(x, h_disk, width, bottom=bottom_disk, label="Disk / Swap Faults", color="#d62728", edgecolor="#222")
+
+    ax1.set_ylabel("Access Distribution (%)", fontsize=11, fontweight="bold")
+    ax1.set_title("MoE Expert Memory Tier Distribution", fontsize=12, fontweight="bold")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(names, fontsize=8, fontweight="bold", rotation=20, ha="right")
+    ax1.set_ylim(0, 115)
+    ax1.legend(loc="upper right", fontsize=9, framealpha=0.9)
+    ax1.grid(axis="y", linestyle="--", alpha=0.5)
+
+    # Panel 2: AMAT Log Scale
+    colors = ["#1f77b4" if a < 100 else ("#2ca02c" if a < 200 else ("#ff7f0e" if a < 1000 else "#d62728")) for a in amats]
+    bars = ax2.bar(x, amats, width, color=colors, edgecolor="#222", log=True)
+    ax2.set_ylabel("AMAT (ns, Log Scale)", fontsize=11, fontweight="bold")
+    ax2.set_title("Average Memory Access Time (Hennessy-Patterson AMAT)", fontsize=12, fontweight="bold")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(names, fontsize=8, fontweight="bold", rotation=20, ha="right")
+    ax2.grid(axis="y", linestyle="--", alpha=0.5)
+
+    y_max = max(amats) if amats else 100
+    y_min = min(amats) if amats else 10
+    ax2.set_ylim(y_min * 0.7, y_max * 2.5)
+
+    for bar, a in zip(bars, amats):
+        txt = f"{a:.0f} ns" if a < 1000 else f"{a/1e6:.1f} ms"
+        ax2.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() * 1.15,
+            txt,
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
+
+    fig.suptitle(title, fontsize=14, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+    logger.info(f"Saved CXL tier breakdown plot: {output_path}")
+    return output_path
+
+
 # ── Combined report ───────────────────────────────────────────────────
 
 
@@ -284,6 +362,9 @@ def generate_all_plots(
     paths.append(plot_throughput_comparison(
         results, str(out / "throughput_comparison.png")
     ))
+    paths.append(plot_cxl_tier_breakdown(
+        results, str(out / "cxl_tier_breakdown.png")
+    ))
 
     if precision_history:
         paths.append(plot_prefetch_precision(
@@ -296,3 +377,4 @@ def generate_all_plots(
         ))
 
     return paths
+

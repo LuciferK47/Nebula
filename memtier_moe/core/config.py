@@ -1,6 +1,7 @@
 """Configuration settings for MemTier-MoE."""
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass(frozen=True)
 class MemTierConfig:
@@ -37,6 +38,19 @@ class MemTierConfig:
     adaptive_prefetch_gating: bool = True
     max_speculative_eviction_freq: float = 1.5
 
+    # Optional formal specification profile name
+    hardware_profile: Optional[str] = None
+
+    @classmethod
+    def from_profile(cls, profile_name: str, **overrides) -> MemTierConfig:
+        """Instantiate a MemTierConfig calibrated to a formal JEDEC/CXL hardware specification."""
+        from memtier_moe.core.hardware_profiles import get_hardware_profile
+        prof = get_hardware_profile(profile_name)
+        cfg = prof.create_config(**overrides)
+        # return with hardware_profile tag attached
+        import dataclasses
+        return dataclasses.replace(cfg, hardware_profile=prof.name)
+
 RTX4050_PRESET = MemTierConfig()
 L40S_PRESET = MemTierConfig(
     gpu_vram_bytes=48_000_000_000,
@@ -44,3 +58,4 @@ L40S_PRESET = MemTierConfig(
     host_dram_bytes=128_000_000_000,
     pcie_bandwidth_gbps=32.0
 )
+

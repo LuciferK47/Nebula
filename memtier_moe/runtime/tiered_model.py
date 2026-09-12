@@ -20,6 +20,7 @@ from memtier_moe.core.metrics import MetricsTracker
 from memtier_moe.runtime.engine import InferenceEngine
 from memtier_moe.prefetch.prefetch_scheduler import PrefetchScheduler
 from memtier_moe.memory.pool import _tensor_size_bytes
+from memtier_moe.memory.trace_exporter import GLOBAL_TRACE_EXPORTER
 
 logger = logging.getLogger(__name__)
 
@@ -69,24 +70,33 @@ class TieredMoEBlock(nn.Module):
     def init_fast_path(self) -> None:
         """Pre-cache direct expert pointers for zero-overhead autoregressive decode."""
         self.is_hbm = []
+        self.expert_tiers = []
+        self.expert_sizes = []
         self.hbm_experts = []
-        self.dram_experts = []
+        self.cpu_experts = []
+        self.cxl_pool = self.engine.tier_manager.get_pool(MemoryTier.CXL)
 
         for exp_idx in range(self.num_experts):
             eid = (self.layer_idx, exp_idx)
             meta = self.engine.tier_manager.get_metadata(eid)
-            is_hbm = (meta.current_tier == MemoryTier.HBM)
+            tier = meta.current_tier
+            self.expert_tiers.append(tier)
+            self.expert_sizes.append(meta.size_bytes)
+            is_hbm = (tier == MemoryTier.HBM)
             self.is_hbm.append(is_hbm)
 
             if is_hbm:
                 mod = self.engine.cache.get_weights(eid)
                 self.hbm_experts.append(mod)
-                self.dram_experts.append(None)
+                self.cpu_experts.append(None)
             else:
-                pool = self.engine.tier_manager.get_pool(meta.current_tier)
+                pool = self.engine.tier_manager.get_pool(tier)
                 mod = pool._store.get(eid)
+                if mod is None:
+                    mod = self.engine.cache.get_weights(eid)
                 self.hbm_experts.append(None)
-                self.dram_experts.append(mod)
+                self.cpu_experts.append(mod)
+        self.dram_experts = self.cpu_experts
 
     def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> Any:
         """Forward pass with tiered expert fetching."""
@@ -118,14 +128,56 @@ class TieredMoEBlock(nn.Module):
             for k in range(self.top_k):
                 exp_idx = int(selected_experts[0, k])
                 weight = top_k_weights[0, k]
-                if self.is_hbm[exp_idx]:
-                    self.engine.metrics.record_hit()
+                tier = self.expert_tiers[exp_idx] if hasattr(self, "expert_tiers") else (MemoryTier.HBM if self.is_hbm[exp_idx] else MemoryTier.DRAM)
+
+                if tier == MemoryTier.HBM:
+                    self.engine.metrics.record_hbm_hit()
                     out = self.hbm_experts[exp_idx](flat_hidden)
-                else:
-                    self.engine.metrics.record_miss()
+                    GLOBAL_TRACE_EXPORTER.record(
+                        tier=MemoryTier.HBM,
+                        size_bytes=flat_hidden.numel() * flat_hidden.element_size(),
+                        access_type="READ",
+                        expert_id=(self.layer_idx, exp_idx),
+                        tag="hbm_compute",
+                    )
+                elif tier == MemoryTier.CXL:
+                    self.engine.metrics.record_cxl_hit()
+                    exp_size = self.expert_sizes[exp_idx] if hasattr(self, "expert_sizes") else 17301504
+                    self.engine.metrics.record_cxl_transfer(exp_size)
+                    if hasattr(self, "cxl_pool") and self.cxl_pool is not None and hasattr(self.cxl_pool, "emulate_access"):
+                        t_em0 = time.perf_counter()
+                        self.cxl_pool.emulate_access(exp_size)
+                        self.engine.metrics.counters["emulate_access_time_ms"] += (time.perf_counter() - t_em0) * 1000.0
+                    t_cpu0 = time.perf_counter()
                     st_cpu = flat_hidden.to("cpu")
-                    out = self.dram_experts[exp_idx](st_cpu).to(flat_hidden.device, non_blocking=True)
-                    self.engine.metrics.counters["total_transfer_bytes"] += st_cpu.numel() * st_cpu.element_size() * 2
+                    out = self.cpu_experts[exp_idx](st_cpu).to(flat_hidden.device, non_blocking=True)
+                    self.engine.metrics.counters["cpu_expert_exec_time_ms"] += (time.perf_counter() - t_cpu0) * 1000.0
+                    act_bytes = st_cpu.numel() * st_cpu.element_size() * 2
+                    self.engine.metrics.counters["total_transfer_bytes"] += act_bytes
+                    self.engine.metrics.counters["pcie_activation_bytes"] += act_bytes
+                    GLOBAL_TRACE_EXPORTER.record(
+                        tier=MemoryTier.CXL,
+                        size_bytes=exp_size,
+                        access_type="READ",
+                        expert_id=(self.layer_idx, exp_idx),
+                        tag="cxl_expert_access",
+                    )
+                else:
+                    self.engine.metrics.record_dram_hit()
+                    t_cpu0 = time.perf_counter()
+                    st_cpu = flat_hidden.to("cpu")
+                    out = self.cpu_experts[exp_idx](st_cpu).to(flat_hidden.device, non_blocking=True)
+                    self.engine.metrics.counters["cpu_expert_exec_time_ms"] += (time.perf_counter() - t_cpu0) * 1000.0
+                    act_bytes = st_cpu.numel() * st_cpu.element_size() * 2
+                    self.engine.metrics.counters["total_transfer_bytes"] += act_bytes
+                    self.engine.metrics.counters["pcie_activation_bytes"] += act_bytes
+                    GLOBAL_TRACE_EXPORTER.record(
+                        tier=MemoryTier.DRAM,
+                        size_bytes=act_bytes,
+                        access_type="TRANSFER",
+                        expert_id=(self.layer_idx, exp_idx),
+                        tag="dram_hybrid_act",
+                    )
                 final_hidden_states = final_hidden_states + out * weight
 
             if hasattr(self.original_block, "shared_expert"):
@@ -187,12 +239,29 @@ class TieredMoEBlock(nn.Module):
                 current_state = flat_hidden[token_idx]
 
                 if meta.current_tier == MemoryTier.HBM:
-                    self.engine.metrics.record_hit()
+                    self.engine.metrics.record_hbm_hit()
                     expert_layer = self.engine.cache.get_weights(eid)
                     gpu_tasks.append((token_idx, top_k_pos, current_state, expert_layer))
-                else:
-                    self.engine.metrics.record_miss()
+                elif meta.current_tier == MemoryTier.DRAM:
+                    self.engine.metrics.record_dram_hit()
                     pool = self.engine.tier_manager.get_pool(meta.current_tier)
+                    expert_layer = pool._store.get(eid)
+                    if expert_layer is None:
+                        expert_layer = self.engine.cache.get_weights(eid)
+                    cpu_tasks.append((token_idx, top_k_pos, current_state, expert_layer))
+                elif meta.current_tier == MemoryTier.CXL:
+                    self.engine.metrics.record_cxl_hit()
+                    self.engine.metrics.record_cxl_transfer(meta.size_bytes)
+                    pool = self.engine.tier_manager.get_pool(meta.current_tier)
+                    if hasattr(pool, "emulate_access"):
+                        pool.emulate_access(meta.size_bytes)
+                    expert_layer = pool._store.get(eid)
+                    if expert_layer is None:
+                        expert_layer = self.engine.cache.get_weights(eid)
+                    cpu_tasks.append((token_idx, top_k_pos, current_state, expert_layer))
+                else:
+                    self.engine.metrics.record_disk_fault()
+                    pool = self.engine.tier_manager.get_pool(MemoryTier.DRAM)
                     expert_layer = pool._store.get(eid)
                     if expert_layer is None:
                         expert_layer = self.engine.cache.get_weights(eid)
@@ -223,6 +292,18 @@ class TieredMoEBlock(nn.Module):
         else:
             # Standard Weight Transfer Mode
             hits, misses = self.engine.cache.lookup(expert_ids)
+            for eid in hits:
+                self.engine.metrics.record_hbm_hit()
+            for eid in misses:
+                meta = self.engine.tier_manager.get_metadata(eid)
+                if meta.current_tier == MemoryTier.DRAM:
+                    self.engine.metrics.record_dram_hit()
+                elif meta.current_tier == MemoryTier.CXL:
+                    self.engine.metrics.record_cxl_hit()
+                    self.engine.metrics.record_cxl_transfer(meta.size_bytes)
+                else:
+                    self.engine.metrics.record_disk_fault()
+
             expert_modules: Dict[int, nn.Module] = {}
 
             for exp_idx in active_expert_indices:
@@ -437,6 +518,12 @@ class TieredMoEWrapper:
             f"HBM initial allocation: {hbm_used / 1e6:.1f} MB"
         )
 
+    def __call__(self, *args, **kwargs) -> Any:
+        return self.model(*args, **kwargs)
+
+    def forward(self, *args, **kwargs) -> Any:
+        return self.model(*args, **kwargs)
+
     def generate(self, *args, **kwargs) -> Any:
         """Autoregressive generation pass-through."""
         with torch.no_grad():
@@ -444,6 +531,7 @@ class TieredMoEWrapper:
 
     def unpatch(self) -> None:
         """Restore original MoE blocks back to the base model."""
+        device = next(self.model.parameters()).device if list(self.model.parameters()) else torch.device("cpu")
         layers = None
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             layers = self.model.model.layers
@@ -455,7 +543,10 @@ class TieredMoEWrapper:
                 attr_name = "block_sparse_moe" if hasattr(layer, "block_sparse_moe") else "mlp"
                 curr = getattr(layer, attr_name, None)
                 if isinstance(curr, TieredMoEBlock):
-                    setattr(layer, attr_name, curr.original_block)
+                    orig = curr.original_block
+                    if orig is not None:
+                        orig.to(device)
+                    setattr(layer, attr_name, orig)
         logger.info("TieredMoEWrapper: unpatched all layers, original blocks restored.")
 
     def report(self) -> Dict[str, Any]:

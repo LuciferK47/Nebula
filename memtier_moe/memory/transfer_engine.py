@@ -171,6 +171,15 @@ class TransferEngine:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         self.metrics.record_transfer(request.size_bytes, elapsed_ms)
 
+        from memtier_moe.memory.trace_exporter import GLOBAL_TRACE_EXPORTER
+        GLOBAL_TRACE_EXPORTER.record(
+            tier=MemoryTier.HBM,
+            size_bytes=request.size_bytes,
+            access_type="WRITE",
+            expert_id=expert_id,
+            tag="demand_fetch_weight",
+        )
+
         logger.debug(
             f"demand_fetch {expert_id}: {len(hop_timings)} hop(s), "
             f"{elapsed_ms:.2f}ms total"
@@ -204,12 +213,22 @@ class TransferEngine:
             tensor = source_pool.retrieve(expert_id)   # latency injected
             source_pool.evict(expert_id)
             dram_pool = self.tier_manager.get_pool(MemoryTier.DRAM)
+            if not dram_pool.available_for(metadata.size_bytes):
+                cxl_pool = self.tier_manager.get_pool(MemoryTier.CXL)
+                dram_experts = list(dram_pool.experts)
+                if dram_experts and cxl_pool.available_for(metadata.size_bytes):
+                    victim = dram_experts[0]
+                    self.tier_manager.demote_to(victim, MemoryTier.CXL)
             dram_pool.store(expert_id, tensor)
             metadata.current_tier = MemoryTier.DRAM
 
         # --- Hop 2 (GPU-side): DRAM→HBM --------------------------------
         source_pool = self.tier_manager.get_pool(MemoryTier.DRAM)
-        tensor = source_pool.retrieve(expert_id)
+        if source_pool.contains(expert_id):
+            tensor = source_pool.retrieve(expert_id)
+        else:
+            from memtier_moe.runtime.engine import _Placeholder
+            tensor = _Placeholder(request.size_bytes)
 
         event = None
         if HAS_TORCH and torch.cuda.is_available() and self._transfer_stream is not None:
@@ -244,6 +263,15 @@ class TransferEngine:
         )
         self._inflight[expert_id] = handle
         logger.debug(f"async_fetch {expert_id}: issued ({hops} hop(s), buf {buf_idx})")
+
+        from memtier_moe.memory.trace_exporter import GLOBAL_TRACE_EXPORTER
+        GLOBAL_TRACE_EXPORTER.record(
+            tier=MemoryTier.HBM,
+            size_bytes=request.size_bytes,
+            access_type="WRITE",
+            expert_id=expert_id,
+            tag="async_fetch_weight",
+        )
         return handle
 
     def wait_for(self, expert_id: ExpertId) -> Optional[Any]:
@@ -361,16 +389,29 @@ class TransferEngine:
             src = metadata.current_tier
 
             src_pool = self.tier_manager.get_pool(src)
-            tensor = src_pool.retrieve(expert_id)
-            src_pool.evict(expert_id)
+            if src_pool.contains(expert_id):
+                tensor = src_pool.retrieve(expert_id)
+                src_pool.evict(expert_id)
+            else:
+                from memtier_moe.runtime.engine import _Placeholder
+                tensor = _Placeholder(request.size_bytes)
 
             # Move to GPU if going to HBM, otherwise stay on CPU
             from memtier_moe.memory.tier_manager import _next_higher_tier
             dst = _next_higher_tier(src)
             dst_pool = self.tier_manager.get_pool(dst)
 
-            if dst == MemoryTier.HBM and HAS_TORCH and isinstance(tensor, torch.Tensor) and torch.cuda.is_available():
-                tensor = tensor.cuda()
+            # If intermediate DRAM tier is full, demote an expert from DRAM to CXL
+            if dst == MemoryTier.DRAM and not dst_pool.available_for(request.size_bytes):
+                cxl_pool = self.tier_manager.get_pool(MemoryTier.CXL)
+                dram_experts = list(dst_pool.experts)
+                if dram_experts and cxl_pool.available_for(request.size_bytes):
+                    victim = dram_experts[0]
+                    self.tier_manager.demote_to(victim, MemoryTier.CXL)
+
+            if dst == MemoryTier.HBM and HAS_TORCH and torch.cuda.is_available():
+                from memtier_moe.memory.pool import _move_to_device
+                tensor = _move_to_device(tensor, "cuda")
 
             dst_pool.store(expert_id, tensor)
             metadata.current_tier = dst

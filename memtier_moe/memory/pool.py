@@ -252,6 +252,7 @@ class CXLPool(MemoryPool):
         capacity_bytes: int,
         latency_ns: int = 350,
         bandwidth_gbps: float = 8.0,
+        burst_factor: float = 0.005,
     ) -> None:
         super().__init__(capacity_bytes, MemoryTier.CXL)
         self._store: Dict[ExpertId, Any] = {}
@@ -261,7 +262,9 @@ class CXLPool(MemoryPool):
 
         # Import here to avoid circular — latency module is lightweight
         from memtier_moe.core.latency import TokenBucketRateLimiter
-        self._rate_limiter = TokenBucketRateLimiter(bandwidth_gbps)
+        self._rate_limiter = TokenBucketRateLimiter(bandwidth_gbps, burst_factor=burst_factor)
+        self._rate_limiter.tokens = 0.0  # Start empty so transfers are rate-limited to bandwidth
+        self.emulation_mode: str = "full"  # "full", "latency_only", or "disabled"
 
     def store(self, expert_id: ExpertId, tensor: Any) -> None:
         tensor_size = _tensor_size_bytes(tensor)
@@ -277,20 +280,27 @@ class CXLPool(MemoryPool):
             f"Usage: {self._used_bytes}/{self.capacity_bytes}"
         )
 
+    def emulate_access(self, size_bytes: int) -> float:
+        """Inject calibrated CXL access latency and bus bandwidth delay based on emulation_mode."""
+        mode = getattr(self, "emulation_mode", "full")
+        if mode == "disabled":
+            return 0.0
+
+        from memtier_moe.core.latency import inject_latency_ns
+        wait_ns = inject_latency_ns(self.latency_ns)
+
+        if mode == "latency_only":
+            return wait_ns / 1e9
+
+        return self._rate_limiter.acquire(size_bytes)
+
     def retrieve(self, expert_id: ExpertId) -> Any:
         if expert_id not in self._store:
             raise KeyError(f"Expert {expert_id} not found in CXL pool")
 
-        # Inject CXL access latency (busy-wait, NOT time.sleep)
-        from memtier_moe.core.latency import inject_latency_ns
-        inject_latency_ns(self.latency_ns)
-
         tensor = self._store[expert_id]
-
-        # Simulate bandwidth constraint
         tensor_size = _tensor_size_bytes(tensor)
-        self._rate_limiter.acquire(tensor_size)
-
+        self.emulate_access(tensor_size)
         return tensor
 
     def evict(self, expert_id: ExpertId) -> Optional[Any]:

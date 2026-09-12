@@ -68,24 +68,39 @@ class InferenceEngine:
             expert_sizes: Map from expert ID to size in bytes.
             initial_frequencies: Map from expert ID to frequency score.
         """
-        # DRAM is the default staging tier, but a config with no DRAM
-        # capacity at all (host_dram_bytes == 0) means "no offload tier —
-        # everything lives in HBM", as the GPU-Resident baseline expresses
-        # it. Staging into DRAM there isn't just wrong, it's impossible:
-        # the very first placement fails against a zero-capacity pool.
         initial_tier = MemoryTier.DRAM if self.config.host_dram_bytes > 0 else MemoryTier.HBM
 
-        for eid, size in expert_sizes.items():
-            self.tier_manager.register_expert(eid, size, initial_tier)
-            # Store a placeholder in the pool so retrieve() works
+        # Order expert placements by frequency if available so frequent experts claim DRAM first
+        if initial_frequencies:
+            ordered_eids = sorted(
+                expert_sizes.keys(), key=lambda eid: initial_frequencies.get(eid, 0.0), reverse=True
+            )
+        else:
+            ordered_eids = list(expert_sizes.keys())
+
+        dram_used = 0
+        for eid in ordered_eids:
+            size = expert_sizes[eid]
+            if initial_tier == MemoryTier.DRAM:
+                if dram_used + size <= self.config.host_dram_bytes:
+                    tier = MemoryTier.DRAM
+                    dram_used += size
+                elif self.config.cxl_memory_bytes > 0:
+                    tier = MemoryTier.CXL
+                else:
+                    tier = MemoryTier.DRAM
+            else:
+                tier = MemoryTier.HBM
+
+            self.tier_manager.register_expert(eid, size, tier)
             placeholder = _Placeholder(size)
-            self.tier_manager.place_initial(eid, placeholder, initial_tier)
+            try:
+                self.tier_manager.place_initial(eid, placeholder, tier)
+            except RuntimeError:
+                # Two-Tier overflow: expert does not fit in DRAM and there is no CXL pool
+                pass
 
         if initial_tier == MemoryTier.HBM:
-            # Every expert just landed directly in HBM. Register all of
-            # them as cached — not only the ones covered by
-            # initial_frequencies — or lookup() would report a miss for
-            # something that's already sitting in the pool.
             for eid in expert_sizes:
                 self.cache.insert(eid)
             if initial_frequencies:
@@ -93,7 +108,6 @@ class InferenceEngine:
             return
 
         if initial_frequencies:
-            # Promote top-k experts to HBM
             sorted_experts = sorted(
                 initial_frequencies.items(), key=lambda item: item[1], reverse=True
             )
@@ -101,8 +115,8 @@ class InferenceEngine:
             for eid, freq in sorted_experts:
                 size = expert_sizes[eid]
                 if hbm_used + size <= self.config.hbm_cache_budget_bytes:
-                    self.tier_manager.promote(eid)
-                    hbm_used += size
+                    if self.tier_manager.promote_to_hbm(eid):
+                        hbm_used += size
                 else:
                     break
 
@@ -131,8 +145,9 @@ class InferenceEngine:
 
         transfer_time_ms = 0.0
 
-        # Hits are executed immediately
+        # Hits are executed immediately from HBM
         for eid in hits:
+            self.metrics.record_hbm_hit()
             weights = self.cache.get_weights(eid)
             # Computation would happen here
 
@@ -142,6 +157,21 @@ class InferenceEngine:
         # transfer engine itself does not do.
         for eid in misses:
             before_ms = self.metrics.counters["total_transfer_time_ms"]
+
+            # Record source tier before promotion/fetch to distinguish DRAM vs CXL vs Disk
+            try:
+                source_tier = self.tier_manager.get_tier(eid)
+                if source_tier == MemoryTier.DRAM:
+                    self.metrics.record_dram_hit()
+                elif source_tier == MemoryTier.CXL:
+                    self.metrics.record_cxl_hit()
+                    meta = self.tier_manager.get_metadata(eid)
+                    self.metrics.record_cxl_transfer(meta.size_bytes)
+                else:
+                    self.metrics.record_disk_fault()
+            except (KeyError, ValueError):
+                self.metrics.record_disk_fault()
+
             self.cache.ensure_resident(eid, self.transfer_engine)
             transfer_time_ms += self.metrics.counters["total_transfer_time_ms"] - before_ms
 
@@ -180,6 +210,7 @@ class InferenceEngine:
         return {
             "metrics": self.metrics.report(),
             "hbm_usage": self.tier_manager.hbm_usage(),
+            "tier_summary": self.tier_manager.summary(),
             "cache_size": self.cache.size()
         }
 
