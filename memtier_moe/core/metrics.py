@@ -176,6 +176,49 @@ class MetricsTracker:
         total = self.counters["prefetch_useful"] + self.counters["prefetch_wasted"]
         return self.counters["prefetch_useful"] / total if total > 0 else 0.0
 
+    def snapshot(self) -> Dict[str, Any]:
+        """Point-in-time copy of the raw additive counters.
+
+        Deliberately excludes computed ratios (hit_rate, amat_ns, dsar_pct,
+        ...) that report() adds — those are cumulative-since-start values,
+        and subtracting two of them between two points in time does NOT
+        give "the rate during that window" (e.g. hit_rate at token 250
+        minus hit_rate at token 200 is not the hit rate of tokens 200-250).
+        Pair with windowed_rates() to compute a correct windowed rate from
+        two snapshots — used by long-horizon runs that report hit-rate /
+        throughput in rolling windows rather than only a final cumulative
+        number.
+        """
+        return dict(self.counters)
+
+    @staticmethod
+    def windowed_rates(prev: Dict[str, Any], curr: Dict[str, Any]) -> Dict[str, float]:
+        """Compute hit-rate-style ratios for the window between two
+        snapshot() calls (curr taken strictly after prev), instead of the
+        cumulative-since-start values report() would give at either
+        endpoint.
+        """
+        delta = {k: curr.get(k, 0) - prev.get(k, 0) for k in curr}
+        hbm = delta.get("hbm_hits", 0)
+        dram = delta.get("dram_hits", 0)
+        cxl = delta.get("cxl_hits", 0)
+        disk = delta.get("disk_faults", 0)
+        tier_total = hbm + dram + cxl + disk
+        classic_total = delta.get("cache_hits", 0) + delta.get("cache_misses", 0)
+        total = max(tier_total, classic_total)
+        hits = max(delta.get("cache_hits", 0), hbm)
+
+        return {
+            "tokens_processed": delta.get("tokens_processed", 0),
+            "hit_rate": hits / total if total > 0 else 0.0,
+            "hbm_hit_rate": hbm / total if total > 0 else 0.0,
+            "dram_hit_rate": dram / total if total > 0 else 0.0,
+            "cxl_hit_rate": cxl / total if total > 0 else 0.0,
+            "disk_fault_rate": disk / total if total > 0 else 0.0,
+            "evictions": delta.get("evictions", 0),
+            "total_transfer_bytes": delta.get("total_transfer_bytes", 0),
+        }
+
     def report(self) -> Dict[str, Any]:
         """Return a copy of all counters and computed rates."""
         stats = self.counters.copy()

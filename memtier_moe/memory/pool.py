@@ -38,6 +38,8 @@ def _move_to_device(tensor: Any, device: str, non_blocking: bool = False) -> Any
         return tensor
     if isinstance(tensor, torch.nn.Module):
         if device == "cuda":
+            if not torch.cuda.is_available():
+                return tensor
             if non_blocking:
                 for p in tensor.parameters():
                     p.data = p.data.to(device="cuda", non_blocking=True)
@@ -167,6 +169,14 @@ class DRAMPool(MemoryPool):
     (zero-cost dict lookups), which is not representative of a real
     host-DRAM-to-HBM transfer over PCIe and made every offloading
     baseline look artificially fast.
+
+    This charge is skipped (``retrieve(..., charge=False)``) when the
+    caller is about to perform a *real* DRAM->HBM copy on real hardware
+    (the live TieredMoEWrapper path) — the real CUDA transfer already
+    measures that same PCIe hop, so charging both would double-count it.
+    Pure-simulation callers (synthetic ``_Placeholder`` tensors, no real
+    hardware transfer ever happens) keep the default ``charge=True``,
+    since the injected cost is their only representation of that hop.
     """
 
     def __init__(
@@ -174,6 +184,7 @@ class DRAMPool(MemoryPool):
         capacity_bytes: int,
         latency_ns: int = 100,
         bandwidth_gbps: float = 16.0,
+        burst_factor: float = 0.005,
     ):
         super().__init__(capacity_bytes, MemoryTier.DRAM)
         self._store: Dict[ExpertId, Any] = {}
@@ -182,7 +193,14 @@ class DRAMPool(MemoryPool):
         self.bandwidth_gbps = bandwidth_gbps
 
         from memtier_moe.core.latency import TokenBucketRateLimiter
-        self._rate_limiter = TokenBucketRateLimiter(bandwidth_gbps)
+        self._rate_limiter = TokenBucketRateLimiter(bandwidth_gbps, burst_factor=burst_factor)
+        # Match CXLPool: start empty so transfers are rate-limited to
+        # bandwidth from the first request. The default burst_factor=1.5
+        # on TokenBucketRateLimiter starts with ~1.5s of bandwidth already
+        # banked (~24 GB at 16 GB/s) — effectively unlimited for any
+        # realistic run — while CXLPool started empty, making DRAM look
+        # artificially free relative to CXL for no physical reason.
+        self._rate_limiter.tokens = 0.0
 
     def store(self, expert_id: ExpertId, tensor: Any) -> None:
         tensor_size = _tensor_size_bytes(tensor)
@@ -200,15 +218,29 @@ class DRAMPool(MemoryPool):
         self._used_bytes += tensor_size
         logger.debug(f"Stored expert {expert_id} in DRAM. Usage: {self._used_bytes}/{self.capacity_bytes}")
 
-    def retrieve(self, expert_id: ExpertId) -> Any:
+    def retrieve(self, expert_id: ExpertId, charge: bool = True) -> Any:
+        """Retrieve a tensor, optionally injecting the modeled DRAM->HBM cost.
+
+        Args:
+            charge: When True (default), inject the synthetic latency and
+                token-bucket bandwidth cost documented on this class. Pure
+                simulation callers (no real tensor ever moves) need this —
+                it is their only source of transfer cost. The live-model
+                transfer engine passes ``charge=False`` for a real
+                torch.Tensor/nn.Module about to make a real
+                ``.to('cuda')`` hop: charging both here and paying the
+                real PCIe copy would double-count the same physical DMA,
+                inflating weight-transfer's measured cost by roughly 2x
+                relative to what the hardware actually did.
+        """
         if expert_id not in self._store:
             raise KeyError(f"Expert {expert_id} not found in DRAM pool")
 
-        from memtier_moe.core.latency import inject_latency_ns
-        inject_latency_ns(self.latency_ns)
-
         tensor = self._store[expert_id]
-        self._rate_limiter.acquire(_tensor_size_bytes(tensor))
+        if charge:
+            from memtier_moe.core.latency import inject_latency_ns
+            inject_latency_ns(self.latency_ns)
+            self._rate_limiter.acquire(_tensor_size_bytes(tensor))
         return tensor
 
     def evict(self, expert_id: ExpertId) -> Optional[Any]:
@@ -253,6 +285,7 @@ class CXLPool(MemoryPool):
         latency_ns: int = 350,
         bandwidth_gbps: float = 8.0,
         burst_factor: float = 0.005,
+        emulation_mode: str = "full",
     ) -> None:
         super().__init__(capacity_bytes, MemoryTier.CXL)
         self._store: Dict[ExpertId, Any] = {}
@@ -264,7 +297,7 @@ class CXLPool(MemoryPool):
         from memtier_moe.core.latency import TokenBucketRateLimiter
         self._rate_limiter = TokenBucketRateLimiter(bandwidth_gbps, burst_factor=burst_factor)
         self._rate_limiter.tokens = 0.0  # Start empty so transfers are rate-limited to bandwidth
-        self.emulation_mode: str = "full"  # "full", "latency_only", or "disabled"
+        self.emulation_mode: str = emulation_mode  # "full", "latency_only", or "disabled"
 
     def store(self, expert_id: ExpertId, tensor: Any) -> None:
         tensor_size = _tensor_size_bytes(tensor)
