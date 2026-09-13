@@ -196,6 +196,24 @@ def load_historical_results() -> Dict[str, Any]:
         except Exception as e:
             print(f"[Server] Warning reading {benchmark_path}: {e}")
 
+    # scripts/run_scenarios.py writes one JSON file per scenario (s1, s2, ...)
+    # into results/scenarios/ — surface all of them keyed by scenario id so
+    # the frontend can render whichever ones have been run without the
+    # server needing to know the scenario list in advance.
+    scenarios_dir = os.path.join(REPO_ROOT, "results", "scenarios")
+    scenarios: Dict[str, Any] = {}
+    if os.path.isdir(scenarios_dir):
+        for fname in sorted(os.listdir(scenarios_dir)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(scenarios_dir, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    scenarios[fname[:-len(".json")]] = json.load(f)
+            except Exception as e:
+                print(f"[Server] Warning reading {fpath}: {e}")
+    results["scenarios"] = scenarios
+
     return results
 
 

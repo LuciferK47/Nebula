@@ -14,6 +14,19 @@ class MemTierConfig:
     cxl_bandwidth_gbps: float = 8.0
     cxl_latency_ns: int = 350
     dram_latency_ns: int = 100
+
+    # CXL emulation fidelity mode, forwarded to CXLPool (memory/pool.py):
+    #   "full"         — inject both latency and token-bucket bandwidth cost (default)
+    #   "latency_only" — inject only the fixed access latency, skip bandwidth limiting
+    #   "disabled"     — no injected cost at all
+    # Used for the CXL sensitivity sweep (S3): if the architectural
+    # conclusion (which baseline wins) is unchanged across these modes and
+    # across a wide cxl_bandwidth_gbps range, the conclusion does not
+    # depend on the CXL emulation's calibration accuracy. Must never
+    # affect *placement* decisions (which tier an expert lives in, hit
+    # rate) — only the injected timing cost. See test_dram_pool_charging.py
+    # and test_emulation_mode_placement_parity.py for the pinned contract.
+    cxl_emulation_mode: str = "full"
     frequency_decay_half_life: int = 500
     eviction_policy: str = "lfu"
     max_inflight_transfers: int = 4

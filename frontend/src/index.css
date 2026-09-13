@@ -1,0 +1,75 @@
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  width: 100%;
+  background-color: #f4f3ed;
+  color: #141414;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+}
+::selection {
+  background-color: #e5b52f;
+  color: #141414;
+}
+/* Exposed alpha-channel checkerboard — the pattern an image editor shows
+   behind a transparent asset. Used as a "raw / not yet resident" signal. */
+.checker {
+  background-image: conic-gradient(
+    #e6e5dc 25%,
+    #f7f6f1 0 50%,
+    #e6e5dc 0 75%,
+    #f7f6f1 0
+  );
+  background-size: 16px 16px;
+  background-position: 0 0;
+}
+.checker-dark {
+  background-image: conic-gradient(
+    #1d1d1a 25%,
+    #262622 0 50%,
+    #1d1d1a 0 75%,
+    #262622 0
+  );
+  background-size: 14px 14px;
+}
+.checker-sm {
+  background-size: 10px 10px;
+}
+:focus-visible {
+  outline: 2px solid #141414;
+  outline-offset: 3px;
+}
+.on-ink :focus-visible {
+  outline-color: #f5b32b;
+}
+@keyframes strata-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  animation: strata-marquee 38s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

@@ -285,14 +285,37 @@ tests/test_weight_profiler.py .....                                      [100%]
 
 ## Emulation Fidelity & Methodology
 
-### Transparent CXL Emulation
-Because physical CXL 2.0/3.0 PCIe expansion cards remain rare in commercial developer workstations, MemTier-MoE provides an honest, hardware-calibrated emulation layer:
-- **Capacity**: Paged host system memory allocation or disk-backed tensors.
-- **Bandwidth**: Token-bucket rate limiter calibrated to PCIe Gen5 x8/x16 bandwidth (32.0–64.0 GB/s).
-- **Latency**: Calibrated sleep and high-resolution timing injection (150–250 ns additional latency over local DRAM) matching industry CXL.mem protocol specifications.
+### What is measured vs. what is emulated
+
+More of this system runs on real hardware than "emulation" suggests. Only the **CXL tier** is emulated; everything else below is a real, measured operation:
+
+| Mechanism | How |
+| :--- | :--- |
+| Expert FFN compute | real `nn.Module` forward pass on CUDA |
+| DRAM → HBM transfer | real `torch.Tensor.to('cuda', non_blocking=True)` on a dedicated `torch.cuda.Stream` |
+| Pinned host staging | real `tensor.pin_memory()` |
+| Hybrid-mode CPU expert execution | real CPU GEMM, real activation transfer over PCIe |
+| Compute/transfer overlap | verified with `torch.cuda.Event(enable_timing=True)` pairs, not inferred |
+
+### Why the CXL tier is a bandwidth model, not a latency model
+
+Because physical CXL 2.0/3.0 expansion cards remain rare in commercial developer workstations, the CXL tier is emulated as host DRAM behind a token-bucket bandwidth limiter, with a fixed per-access latency added via a calibrated busy-wait.
+
+For a representative 13.3 MB expert, the latency term is **~0.02% of the total injected cost** — bandwidth dominates by roughly four orders of magnitude:
+
+| Link | Bandwidth term | Latency term | Latency's share |
+| :--- | ---: | ---: | ---: |
+| CXL @ 8 GB/s | 1.663 ms | 350 ns | 0.021% |
+| CXL @ 32 GB/s | 0.416 ms | 230 ns | 0.055% |
+
+So while the busy-wait targets a specific nanosecond figure, at this transfer granularity it contributes negligibly to any reported number — the honest framing is **"CXL is modeled as a bandwidth-limited link,"** not "CXL latency is calibrated to nanosecond precision." The relative ordering HBM < DRAM < CXL is preserved and is what the tiering evaluation depends on.
+
+Rather than adding a cycle-accurate simulator (QEMU CXL passthrough adds no timing model at all over plain host RAM; DRAMSim3/gem5 model per-request DRAM device timing that collapses to sustained bandwidth at this MB-scale bulk-transfer granularity — i.e. they would re-derive the number this token bucket already computes, at large engineering cost, on a physically incompatible access pattern), this project runs a **sensitivity sweep** instead: `scripts/run_scenarios.py --scenario s3` sweeps `cxl_bandwidth_gbps` across a 16× range and `cxl_emulation_mode` across `{full, latency_only, disabled}`. If the reported architectural conclusion (which baseline wins, and by how much) is stable across that sweep, it does not depend on the CXL emulation's calibration accuracy — a stronger claim than validating against any one simulator's specific assumptions. `cxl_emulation_mode` is guaranteed to affect only injected timing, never expert placement or hit rate (see `tests/test_emulation_mode_parity.py`).
+
+Raw memory-transaction traces (address, tier, timestamp, size) are recorded by `memtier_moe/memory/trace_exporter.py` and can be exported in DRAMSim3 or gem5's native trace formats for anyone who wants to cross-check the bandwidth model against those simulators offline, without making either a runtime dependency.
 
 ### Multi-Stream CUDA Concurrency
-Weight transfers leverage dedicated CUDA streams (`torch.cuda.Stream`) separated from the default compute stream, with CUDA events (`torch.cuda.Event`) coordinating dependency resolution to maximize compute/transfer overlap.
+Weight transfers leverage dedicated CUDA streams (`torch.cuda.Stream`) separated from the default compute stream, with CUDA events (`torch.cuda.Event`) coordinating dependency resolution to maximize compute/transfer overlap. `scripts/run_scenarios.py --scenario s9` re-verifies this and saves both the CUDA-event timing and the exported kernel trace.
 
 ---
 

@@ -31,6 +31,7 @@ class TransferHandle:
     """Handle for an in-flight transfer."""
     request: TransferRequest
     event: Optional[Any] = None       # torch.cuda.Event when applicable
+    start_event: Optional[Any] = None # torch.cuda.Event(enable_timing=True), for elapsed_time()
     start_time: float = 0.0
     buffer_idx: int = 0               # which ping-pong buffer (0 or 1)
     hops_completed: int = 0           # for multi-hop CXL→DRAM→HBM
@@ -225,14 +226,18 @@ class TransferEngine:
         # --- Hop 2 (GPU-side): DRAM→HBM --------------------------------
         source_pool = self.tier_manager.get_pool(MemoryTier.DRAM)
         if source_pool.contains(expert_id):
-            tensor = source_pool.retrieve(expert_id)
+            peeked = source_pool._store.get(expert_id)
+            tensor = source_pool.retrieve(expert_id, charge=not self._dram_hop_is_real(peeked))
         else:
             from memtier_moe.runtime.engine import _Placeholder
             tensor = _Placeholder(request.size_bytes)
 
         event = None
+        start_event = None
         if HAS_TORCH and torch.cuda.is_available() and self._transfer_stream is not None:
             with torch.cuda.stream(self._transfer_stream):
+                start_event = torch.cuda.Event(enable_timing=True)
+                start_event.record(self._transfer_stream)
                 if isinstance(tensor, torch.nn.Module):
                     for p in tensor.parameters():
                         p.data = p.data.to(device="cuda", non_blocking=True)
@@ -245,7 +250,7 @@ class TransferEngine:
                         tensor = tensor.cuda(non_blocking=True)
                     except TypeError:
                         tensor = tensor.cuda()
-                event = torch.cuda.Event()
+                event = torch.cuda.Event(enable_timing=True)
                 event.record(self._transfer_stream)
 
         # Stage the tensor for wait_for()/poll_completed() to pick up. Keyed
@@ -256,6 +261,7 @@ class TransferEngine:
         handle = TransferHandle(
             request=request,
             event=event,
+            start_event=start_event,
             start_time=start_time,
             buffer_idx=buf_idx,
             hops_completed=0,
@@ -308,7 +314,14 @@ class TransferEngine:
         handle.request.state = TransferState.COMPLETE
         handle.request.completed_at = time.time()
 
-        elapsed_ms = (time.perf_counter() - handle.start_time) * 1000
+        if handle.start_event is not None and handle.event is not None:
+            # Actual GPU-side transfer duration, independent of how long
+            # the caller waited before calling wait_for().
+            elapsed_ms = handle.start_event.elapsed_time(handle.event)
+        else:
+            # No real CUDA events available (pure simulation / no CUDA):
+            # wall-clock time from issue to collection is the only signal.
+            elapsed_ms = (time.perf_counter() - handle.start_time) * 1000
         self.metrics.record_transfer(handle.request.size_bytes, elapsed_ms)
 
         del self._inflight[expert_id]
@@ -364,6 +377,23 @@ class TransferEngine:
         from memtier_moe.memory.tier_manager import _TIER_ORDER
         return abs(_TIER_ORDER.index(dest) - _TIER_ORDER.index(source))
 
+    @staticmethod
+    def _dram_hop_is_real(tensor: Any) -> bool:
+        """Will retrieving *tensor* from DRAM be followed by a real CUDA copy?
+
+        True only for a genuine torch.Tensor/nn.Module with CUDA available
+        (the live TieredMoEWrapper path). False for a pure-simulation
+        _Placeholder (its .cuda()/.cpu() are no-ops) or when CUDA is
+        unavailable — in both of those cases DRAMPool's injected latency
+        and bandwidth cost is the only thing modeling this hop, so it must
+        be charged. See DRAMPool.retrieve()'s ``charge`` parameter.
+        """
+        return (
+            HAS_TORCH
+            and torch.cuda.is_available()
+            and isinstance(tensor, (torch.nn.Module, torch.Tensor))
+        )
+
     def _create_transfer_request(self, expert_id: ExpertId) -> TransferRequest:
         metadata = self.tier_manager.get_metadata(expert_id)
         return TransferRequest(
@@ -390,7 +420,11 @@ class TransferEngine:
 
             src_pool = self.tier_manager.get_pool(src)
             if src_pool.contains(expert_id):
-                tensor = src_pool.retrieve(expert_id)
+                if src == MemoryTier.DRAM:
+                    peeked = src_pool._store.get(expert_id)
+                    tensor = src_pool.retrieve(expert_id, charge=not self._dram_hop_is_real(peeked))
+                else:
+                    tensor = src_pool.retrieve(expert_id)
                 src_pool.evict(expert_id)
             else:
                 from memtier_moe.runtime.engine import _Placeholder
@@ -401,13 +435,38 @@ class TransferEngine:
             dst = _next_higher_tier(src)
             dst_pool = self.tier_manager.get_pool(dst)
 
-            # If intermediate DRAM tier is full, demote an expert from DRAM to CXL
+            # If the intermediate DRAM tier is full, demote DRAM residents to
+            # CXL to make room. Evict as many as needed rather than just one:
+            # a single victim can be smaller than the incoming expert, which
+            # previously left the pool still full and made the store() below
+            # raise mid-promotion.
             if dst == MemoryTier.DRAM and not dst_pool.available_for(request.size_bytes):
                 cxl_pool = self.tier_manager.get_pool(MemoryTier.CXL)
-                dram_experts = list(dst_pool.experts)
-                if dram_experts and cxl_pool.available_for(request.size_bytes):
-                    victim = dram_experts[0]
+                for victim in list(dst_pool.experts):
+                    if dst_pool.available_for(request.size_bytes):
+                        break
+                    victim_size = self.tier_manager.get_metadata(victim).size_bytes
+                    if not cxl_pool.available_for(victim_size):
+                        break
                     self.tier_manager.demote_to(victim, MemoryTier.CXL)
+
+                if not dst_pool.available_for(request.size_bytes):
+                    # DRAM cannot stage this expert at all — its capacity is
+                    # zero or below the expert's size, or CXL has no room to
+                    # take any victim. Both the CXL and DRAM pools hold
+                    # host-side tensors, so this hop is a bookkeeping step in
+                    # the tier model rather than a physical data movement;
+                    # skip straight to HBM (which ensure_resident() has
+                    # already made room for) instead of raising partway
+                    # through a promotion. Mirrors what real hardware does:
+                    # DMA directly out of the CXL-attached region.
+                    logger.debug(
+                        f"DRAM cannot stage {expert_id} "
+                        f"({request.size_bytes}B needed, {dst_pool.free_bytes()}B free) — "
+                        f"bypassing DRAM hop and promoting {src} -> HBM directly"
+                    )
+                    dst = MemoryTier.HBM
+                    dst_pool = self.tier_manager.get_pool(dst)
 
             if dst == MemoryTier.HBM and HAS_TORCH and torch.cuda.is_available():
                 from memtier_moe.memory.pool import _move_to_device

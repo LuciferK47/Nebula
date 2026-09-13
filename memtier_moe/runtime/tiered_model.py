@@ -477,6 +477,29 @@ class TieredMoEWrapper:
             # Layer-balanced round robin so every layer gets primary experts in HBM
             all_discovered.sort(key=lambda item: (item[0][1], item[0][0]))
 
+        # Precondition: the three tiers together must be able to hold every
+        # expert. There is no disk backing store — when all tiers are full,
+        # TierManager.demote_to() falls back to evicting the tensor and
+        # returning it while marking the expert as resident in the target
+        # tier. In simulation that is harmless (the tensor is a _Placeholder
+        # and a later fetch just synthesizes an equivalent one), but here the
+        # tensor is an nn.Module holding the *only* copy of those weights,
+        # so dropping it silently corrupts generation rather than raising.
+        # Fail fast with an actionable message instead.
+        total_expert_bytes = sum(size for _, _, size in all_discovered)
+        total_capacity = hbm_budget + dram_budget + self.config.cxl_memory_bytes
+        if total_capacity < total_expert_bytes:
+            raise ValueError(
+                f"Tier budgets cannot hold the model's experts: "
+                f"{total_expert_bytes / 1e6:.1f} MB of expert weights vs "
+                f"{total_capacity / 1e6:.1f} MB total capacity "
+                f"(HBM {hbm_budget / 1e6:.1f} + DRAM {dram_budget / 1e6:.1f} + "
+                f"CXL {self.config.cxl_memory_bytes / 1e6:.1f} MB). "
+                f"There is no disk tier to spill to, so the shortfall of "
+                f"{(total_expert_bytes - total_capacity) / 1e6:.1f} MB would be dropped and "
+                f"produce wrong output. Raise one of the tier budgets."
+            )
+
         for eid, expert_module, expert_size in all_discovered:
             if hbm_used + expert_size <= hbm_budget:
                 initial_tier = MemoryTier.HBM

@@ -59,6 +59,7 @@ class TierManager:
                 capacity_bytes=config.cxl_memory_bytes,
                 latency_ns=config.cxl_latency_ns,
                 bandwidth_gbps=config.cxl_bandwidth_gbps,
+                emulation_mode=getattr(config, "cxl_emulation_mode", "full"),
             ),
         }
 
