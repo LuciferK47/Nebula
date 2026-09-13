@@ -1,0 +1,81 @@
+{
+  "timestamp": "2026-09-12 13:20:10",
+  "hardware": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "model": "C:\\Users\\Kruti\\Desktop\\PROG\\Nebula\\Nebula\\scripts\\..\\models\\Qwen1.5-4x0.5B-Chat-MoE",
+  "wikitext2_perplexity": {
+    "full_vram_oracle": {
+      "loss": 3.3005,
+      "perplexity": 27.125,
+      "total_tokens": 1024,
+      "eval_time_s": 1.5,
+      "tok_per_sec": 682.58
+    },
+    "memtier_900mb": {
+      "loss": 3.3004,
+      "perplexity": 27.1232,
+      "total_tokens": 1024,
+      "eval_time_s": 8.79,
+      "tok_per_sec": 116.52,
+      "delta_ppl": -0.0018,
+      "loss_diff_pct": 0.003
+    },
+    "memtier_600mb": {
+      "loss": 3.2993,
+      "perplexity": 27.0942,
+      "total_tokens": 1024,
+      "eval_time_s": 12.82,
+      "tok_per_sec": 79.9,
+      "delta_ppl": -0.0308,
+      "loss_diff_pct": 0.036
+    }
+  },
+  "sharegpt_serving": {
+    "full_vram_oracle": {
+      "ttft_p50_ms": 125.92,
+      "ttft_p90_ms": 145.66,
+      "tpot_mean_ms": 108.51,
+      "tpot_p50_ms": 101.97,
+      "tpot_p90_ms": 135.21,
+      "tpot_p99_ms": 164.92,
+      "throughput_tok_s": 9.13,
+      "total_tokens_generated": 163,
+      "metrics": {}
+    },
+    "memtier_900mb": {
+      "ttft_p50_ms": 398.04,
+      "ttft_p90_ms": 481.59,
+      "tpot_mean_ms": 125.97,
+      "tpot_p50_ms": 125.85,
+      "tpot_p90_ms": 143.3,
+      "tpot_p99_ms": 156.3,
+      "throughput_tok_s": 7.39,
+      "total_tokens_generated": 163,
+      "metrics": {
+        "hit_rate": 0.6199,
+        "hbm_hits": 4999,
+        "dram_hits": 3065,
+        "cxl_hits": 0,
+        "evictions": 0,
+        "total_transfer_bytes": 22659072
+      }
+    },
+    "memtier_600mb": {
+      "ttft_p50_ms": 506.21,
+      "ttft_p90_ms": 599.63,
+      "tpot_mean_ms": 131.42,
+      "tpot_p50_ms": 125.84,
+      "tpot_p90_ms": 153.01,
+      "tpot_p99_ms": 200.03,
+      "throughput_tok_s": 6.96,
+      "total_tokens_generated": 163,
+      "metrics": {
+        "hit_rate": 0.4521,
+        "hbm_hits": 3646,
+        "dram_hits": 4418,
+        "cxl_hits": 0,
+        "evictions": 0,
+        "total_transfer_bytes": 32280576
+      }
+    }
+  }
+}

@@ -41,18 +41,21 @@ from memtier_moe.evaluation.visualization import (
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logging.getLogger("memtier_moe").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-def load_routing_traces(trace_dir: str = "traces") -> Tuple[Dict[str, List[List[List[int]]]], Dict[str, RoutingTrace]]:
+import argparse
+
+def load_routing_traces(trace_dir: str = "traces", trace_prefix: str = "routing_trace_") -> Tuple[Dict[str, List[List[List[int]]]], Dict[str, RoutingTrace]]:
     """Load pre-generated .npz routing traces for all domains."""
     routing_data = {}
     raw_traces = {}
 
     for domain in ["wikitext", "code"]:
-        path = os.path.join(trace_dir, f"routing_trace_{domain}.npz")
+        path = os.path.join(trace_dir, f"{trace_prefix}{domain}.npz")
         if not os.path.isfile(path):
-            raise FileNotFoundError(f"Trace file not found: {path}. Run scripts/generate_traces.py first.")
+            raise FileNotFoundError(f"Trace file not found: {path}. Run scripts/generate_traces.py or generate_qwen14b_traces.py first.")
 
         trace = RoutingTrace.load(path)
         raw_traces[domain] = trace
@@ -78,12 +81,21 @@ def load_routing_traces(trace_dir: str = "traces") -> Tuple[Dict[str, List[List[
 
 
 def main():
+    parser = argparse.ArgumentParser(description="MemTier-MoE Full Evaluation Matrix Benchmark")
+    parser.add_argument("--trace-prefix", type=str, default="routing_trace_", help="Prefix for trace files (e.g. routing_trace_qwen14b_)")
+    parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 expert weights (17.3MB) instead of INT4 (4.33MB)")
+    parser.add_argument("--budgets", type=str, default=None, help="Comma-separated HBM budgets in GB (e.g. '1.5,3.0')")
+    parser.add_argument("--dram-gb", type=float, default=2.0, help="Host DRAM pool budget in GB (default: 2.0 GB)")
+    parser.add_argument("--output-dir", type=str, default="results", help="Directory to save plots and results")
+    args = parser.parse_args()
+
     print("=" * 70)
-    print("MemTier-MoE: 16-Run Full Evaluation Matrix Benchmark")
+    print(f"MemTier-MoE: 16-Run Full Evaluation Matrix Benchmark ({args.trace_prefix})")
+    print(f"DRAM Working Set Budget: {args.dram_gb:.1f} GB | CXL Pool: 32.0 GB")
     print("=" * 70)
 
     # 1. Load traces
-    routing_data, raw_traces = load_routing_traces("traces")
+    routing_data, raw_traces = load_routing_traces("traces", trace_prefix=args.trace_prefix)
 
     # 2. Build CoOccurrenceModel from real WikiText trace
     wiki_trace = raw_traces["wikitext"]
@@ -92,7 +104,7 @@ def main():
     expert_ids = np.array([d.top_k_expert_ids for d in wiki_trace.decisions])
 
     stats = extract_co_occurrences(token_indices, layer_indices, expert_ids, num_layers=wiki_trace.num_layers)
-    co_occurr_model = CoOccurrenceModel(lookahead=2, min_probability=0.05)
+    co_occurr_model = CoOccurrenceModel(lookahead=2, min_probability=0.03)
     co_occurr_model.build_from_stats(stats)
     print(f"\n{co_occurr_model.summary()}")
 
@@ -107,18 +119,24 @@ def main():
     if num_experts <= 8:
         # Real Qwen1.5-4x0.5B-MoE checkpoint: 13.3 MB per expert block
         expert_size = 13_300_000
-        budgets_gb = [0.6, 0.9]  # 600 MB (47% capacity) and 900 MB (71% capacity)
+        budgets_gb = [0.6, 0.9] if args.budgets is None else [float(b) for b in args.budgets.split(",")]
         total_model_bytes = num_layers * num_experts * expert_size
         print(f"\nReal MoE Checkpoint Configuration: {num_layers} layers x {num_experts} experts (13.3 MB each)")
         print(f"Total Active MoE Expert Weights: {total_model_bytes / 1e6:.1f} MB ({num_layers * num_experts} expert blocks)")
     else:
-        # Full Qwen1.5-MoE-A2.7B INT4 architecture: 4.33 MB per expert block
-        expert_size = 4_325_376
-        budgets_gb = [3.0, 4.0]
-        total_model_bytes = num_layers * num_experts * expert_size
-        print(f"\nTotal MoE Model Size (INT4): {total_model_bytes / 1e9:.2f} GB ({num_layers * num_experts} expert blocks)")
+        # Full Qwen1.5-MoE-A2.7B architecture
+        if args.fp16:
+            expert_size = 17_301_504  # 8,650,752 params * 2 bytes (FP16)
+            budgets_gb = [1.5, 3.0] if args.budgets is None else [float(b) for b in args.budgets.split(",")]
+            total_model_bytes = num_layers * num_experts * expert_size
+            print(f"\nTotal MoE Model Size (FP16): {total_model_bytes / 1e9:.2f} GB ({num_layers * num_experts} expert blocks @ 17.3 MB each)")
+        else:
+            expert_size = 4_325_376  # 8,650,752 params * 0.5 bytes (INT4)
+            budgets_gb = [1.5, 3.0] if args.budgets is None else [float(b) for b in args.budgets.split(",")]
+            total_model_bytes = num_layers * num_experts * expert_size
+            print(f"\nTotal MoE Model Size (INT4): {total_model_bytes / 1e9:.2f} GB ({num_layers * num_experts} expert blocks @ 4.33 MB each)")
 
-    expert_sizes: Dict[ExpertId, int] = {
+    expert_sizes = {
         (l, e): expert_size
         for l in range(num_layers)
         for e in range(num_experts)
@@ -142,7 +160,7 @@ def main():
         print(f"\n>>> Running Evaluation for HBM Cache Budget: {budget:.1f} GB <<<")
         baselines = make_baseline_configs(
             hbm_budget_bytes=budget_bytes,
-            host_dram_bytes=16_000_000_000,
+            host_dram_bytes=int(args.dram_gb * 1e9),
             cxl_memory_bytes=32_000_000_000,
         )
 
@@ -151,9 +169,11 @@ def main():
                 res = runner.run_single(b_cfg, decisions, domain=domain)
                 all_results.results.append(res)
                 print(
-                    f"  [{res.baseline_name:<25}] {res.domain:<9} "
-                    f"HitRate: {res.cache_hit_rate:.1%} | "
-                    f"Prefetch Prec: {res.prefetch_precision:.1%} | "
+                    f"  [{res.baseline_name:<24}] {res.domain:<8} "
+                    f"H_HBM: {res.hbm_hit_rate:.1%} | "
+                    f"H_DRAM: {res.dram_hit_rate:.1%} | "
+                    f"H_CXL: {res.cxl_hit_rate:.1%} | "
+                    f"AMAT: {res.amat_ns:.0f}ns | "
                     f"Tok/s: {res.tokens_per_second:5.1f} | "
                     f"Wall: {res.wall_time_seconds:.2f}s"
                 )
@@ -165,42 +185,52 @@ def main():
     print(all_results.to_table())
 
     # 6. Generate Publication Figures
-    os.makedirs("results", exist_ok=True)
+    out_dir = args.output_dir
+    os.makedirs(out_dir, exist_ok=True)
     dicts = all_results.to_dicts()
 
+    prefix = "qwen14b_" if "qwen14b" in args.trace_prefix else ""
     primary_budget = max(budgets_gb)
     res_primary = [d for d in dicts if abs(d["hbm_budget_gb"] - primary_budget) < 0.1]
 
     plot_hit_rate_comparison(
         res_primary,
-        output_path="results/hit_rate_comparison.png",
+        output_path=os.path.join(out_dir, f"{prefix}hit_rate_comparison.png"),
         title=f"Cache Hit Rate Comparison ({primary_budget:.1f} GB HBM Budget)",
     )
 
     plot_throughput_comparison(
         res_primary,
-        output_path="results/simulated_throughput_comparison.png",
+        output_path=os.path.join(out_dir, f"{prefix}simulated_throughput_comparison.png"),
         title="Simulated Pipeline Throughput (tokens/sec)",
+    )
+
+    from memtier_moe.evaluation.visualization import plot_cxl_tier_breakdown
+    plot_cxl_tier_breakdown(
+        res_primary,
+        output_path=os.path.join(out_dir, f"{prefix}cxl_tier_breakdown.png"),
+        title=f"CXL Tier-Decomposed Memory Distribution & AMAT ({primary_budget:.1f} GB HBM Budget)",
     )
 
     # Expert Heatmaps for WikiText & Code
     plot_expert_heatmap(
         wiki_trace,
-        output_path="results/expert_heatmap_wikitext.png",
-        title="Qwen1.5-MoE Routing Heatmap (WikiText)",
+        output_path=os.path.join(out_dir, f"{prefix}expert_heatmap_wikitext.png"),
+        title="Qwen1.5-MoE-A2.7B Routing Heatmap (WikiText)",
     )
     code_trace = raw_traces["code"]
     plot_expert_heatmap(
         code_trace,
-        output_path="results/expert_heatmap_code.png",
-        title="Qwen1.5-MoE Routing Heatmap (Code)",
+        output_path=os.path.join(out_dir, f"{prefix}expert_heatmap_code.png"),
+        title="Qwen1.5-MoE-A2.7B Routing Heatmap (Code)",
     )
 
     # Save raw JSON results
-    with open("results/benchmark_results.json", "w") as f:
+    json_path = os.path.join(out_dir, f"{prefix}benchmark_results.json")
+    with open(json_path, "w") as f:
         json.dump(dicts, f, indent=2)
 
-    print("\nAll benchmark artifacts & plots generated in ./results/")
+    print(f"\nAll benchmark artifacts & plots generated in ./{out_dir}/ ({prefix}*)")
 
 
 if __name__ == "__main__":

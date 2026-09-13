@@ -31,7 +31,7 @@ CACHED_MODEL = None
 CACHED_TOKENIZER = None
 CACHED_CO_MODEL = None
 LOCAL_CHAT_MOE = os.path.join(REPO_ROOT, "models", "Qwen1.5-4x0.5B-Chat-MoE")
-DEFAULT_MODEL_ID = LOCAL_CHAT_MOE if os.path.exists(LOCAL_CHAT_MOE) else "nopainkiller/Qwen1.5-4x0.5B-MoE"
+DEFAULT_MODEL_ID = LOCAL_CHAT_MOE if os.path.exists(LOCAL_CHAT_MOE) else "Qwen/Qwen1.5-MoE-A2.7B"
 
 BASELINE_SPECS = [
     {

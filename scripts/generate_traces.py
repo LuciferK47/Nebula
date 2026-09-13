@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate authentic routing traces for MoE architectures across WikiText and Code domains.
 
-Uses the real model checkpoint (nopainkiller/Qwen1.5-4x0.5B-MoE) to capture
+Uses the real model checkpoint (Qwen1.5-4x0.5B-Chat-MoE / Qwen1.5-MoE-A2.7B) to capture
 genuine gating logits and top-k routing decisions across all 24 layers,
 reflecting true semantic specialization and cross-layer expert co-occurrence.
 """
@@ -270,11 +270,13 @@ def generate_trace_synthetic(
 
 
 def main():
+    local_chat_moe = os.path.join(os.path.dirname(__file__), "..", "models", "Qwen1.5-4x0.5B-Chat-MoE")
+    default_model = local_chat_moe if os.path.exists(local_chat_moe) else "Qwen/Qwen1.5-MoE-A2.7B"
     parser = argparse.ArgumentParser(description="MemTier-MoE Real Trace Generator")
     parser.add_argument(
         "--model-id",
         type=str,
-        default="nopainkiller/Qwen1.5-4x0.5B-MoE",
+        default=default_model,
         help="HuggingFace model ID or local path",
     )
     parser.add_argument(

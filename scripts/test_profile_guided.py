@@ -58,7 +58,8 @@ def test_budget(base_model, tokenizer, co_model, freq_map, hbm_mb, tokens=25):
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
-    model_id = "nopainkiller/Qwen1.5-4x0.5B-MoE"
+    local_chat_moe = os.path.join(os.path.dirname(__file__), "..", "models", "Qwen1.5-4x0.5B-Chat-MoE")
+    model_id = local_chat_moe if os.path.exists(local_chat_moe) else "Qwen/Qwen1.5-MoE-A2.7B"
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token

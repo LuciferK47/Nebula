@@ -89,11 +89,13 @@ def calibrate_routing_model(model: torch.nn.Module, tokenizer: AutoTokenizer, de
 
 
 def main():
+    local_chat_moe = os.path.join(os.path.dirname(__file__), "..", "models", "Qwen1.5-4x0.5B-Chat-MoE")
+    default_model = local_chat_moe if os.path.exists(local_chat_moe) else "Qwen/Qwen1.5-MoE-A2.7B"
     parser = argparse.ArgumentParser(description="Live MoE Inference with MemTier-MoE")
     parser.add_argument(
         "--model-id",
         type=str,
-        default="nopainkiller/Qwen1.5-4x0.5B-MoE",
+        default=default_model,
         help="HuggingFace model ID or local path",
     )
     parser.add_argument(

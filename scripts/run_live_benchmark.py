@@ -2,7 +2,7 @@
 """Run real hardware live inference benchmarks on GPU across tiering baselines.
 
 Measures actual wall-clock tokens/second, cache hit rate, eviction counts,
-and transfer volumes using real model weights (nopainkiller/Qwen1.5-4x0.5B-MoE)
+and transfer volumes using real model weights (Qwen1.5-4x0.5B-Chat-MoE / Qwen1.5-MoE-A2.7B)
 running autoregressive generation on NVIDIA GPU.
 """
 from __future__ import annotations
@@ -243,8 +243,10 @@ def plot_live_throughput(results: List[Dict[str, Any]], output_path: str = "resu
 
 
 def main():
+    local_chat_moe = os.path.join(os.path.dirname(__file__), "..", "models", "Qwen1.5-4x0.5B-Chat-MoE")
+    default_model = local_chat_moe if os.path.exists(local_chat_moe) else "Qwen/Qwen1.5-MoE-A2.7B"
     parser = argparse.ArgumentParser(description="Live Hardware MoE Benchmark")
-    parser.add_argument("--model-id", type=str, default="nopainkiller/Qwen1.5-4x0.5B-MoE")
+    parser.add_argument("--model-id", type=str, default=default_model)
     parser.add_argument("--tokens", type=int, default=25, help="Tokens to generate per run")
     parser.add_argument("--output-json", type=str, default="results/live_benchmark_results.json")
     parser.add_argument("--output-plot", type=str, default="results/throughput_comparison.png")
