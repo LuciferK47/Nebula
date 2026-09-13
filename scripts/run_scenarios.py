@@ -52,7 +52,8 @@ from memtier_moe.runtime.tiered_model import TieredMoEWrapper
 from scripts.run_live_benchmark import load_or_calibrate_co_occurrence
 
 RESULTS_DIR = os.path.join(REPO_ROOT, "results", "scenarios")
-DEFAULT_MODEL_ID = "nopainkiller/Qwen1.5-4x0.5B-MoE"
+LOCAL_CHAT_MOE = os.path.join(REPO_ROOT, "models", "Qwen1.5-4x0.5B-Chat-MoE")
+DEFAULT_MODEL_ID = LOCAL_CHAT_MOE if os.path.exists(LOCAL_CHAT_MOE) else "Qwen/Qwen1.5-MoE-A2.7B"
 DEFAULT_TRACE = os.path.join(REPO_ROOT, "traces", "routing_trace_wikitext.npz")
 DEFAULT_PROMPT = "Explain the fundamental principles of hierarchical memory tiering in high-performance computing."
 
@@ -72,7 +73,7 @@ def load_resources(model_id: str, trace_path: str):
         tokenizer.pad_token = tokenizer.eos_token
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+    dtype = torch.float16
     base_model = AutoModelForCausalLM.from_pretrained(
         model_id, dtype=dtype, device_map=device, low_cpu_mem_usage=True,
     )

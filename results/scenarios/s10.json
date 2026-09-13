@@ -1,0 +1,112 @@
+{
+  "scenario": "s10_edge_cases",
+  "description": "Deliberate robustness probes: degenerate budgets, missing tiers, VRAM over-commit, the disk-swap fallback, prefill-dominant input, prefetch abuse, and leak checks. Runs last because the failure cases can leave the shared base model half-migrated.",
+  "summary": {
+    "total": 10,
+    "passed": 2,
+    "expected_fail": 2,
+    "failed": 6,
+    "unexpected_pass": 0
+  },
+  "model_contaminated": true,
+  "contamination_note": "A deliberate failure left the shared base model unusable \u2014 re-run any scenario after this one in a fresh process.",
+  "cases": [
+    {
+      "case": "e1_tiny_budget_hybrid",
+      "description": "50MB HBM budget \u2014 smaller than one layer's top-k working set.",
+      "expected_to_fail": false,
+      "status": "PASS",
+      "result": {
+        "hbm_budget_mb": 50,
+        "dram_budget_mb": 1500,
+        "cxl_budget_mb": 1500,
+        "execution_mode": "hybrid",
+        "tokens_per_second": 3.08,
+        "hit_rate": 0.0342,
+        "cxl_hit_rate": 0.019,
+        "evictions": 0,
+        "peak_vram_mb": 2967.0
+      }
+    },
+    {
+      "case": "e2_tiny_budget_weight_transfer",
+      "description": "50MB HBM budget in weight_transfer mode \u2014 probes top-k eviction pinning.",
+      "expected_to_fail": false,
+      "status": "FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e3_gpu_resident_no_dram_no_cxl",
+      "description": "host_dram=0, cxl=0, ample HBM \u2014 the documented historical crash case.",
+      "expected_to_fail": false,
+      "status": "FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)",
+      "model_intact": false,
+      "integrity_error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e4_no_tier_has_room",
+      "description": "host_dram=0, cxl=0, HBM too small \u2014 must raise cleanly, not hang or corrupt.",
+      "expected_to_fail": true,
+      "status": "EXPECTED_FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)",
+      "model_intact": false,
+      "integrity_error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e5_budget_nominally_exceeds_physical_vram",
+      "description": "8000MB HBM cap on a 6GB card with a ~1.2GB expert set \u2014 cap should simply mean 'everything in HBM', not an error.",
+      "expected_to_fail": false,
+      "status": "FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)",
+      "model_intact": false,
+      "integrity_error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e6_total_capacity_below_model_size",
+      "description": "HBM+DRAM+CXL = 600MB total for a ~1.2GB expert set \u2014 must be refused at construction rather than silently dropping weights.",
+      "expected_to_fail": true,
+      "status": "EXPECTED_FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)",
+      "model_intact": false,
+      "integrity_error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e7_long_prompt_prefill_dominant",
+      "description": "~800-token prompt, 5 new tokens \u2014 exercises multi-token prefill, not the decode fast path.",
+      "expected_to_fail": false,
+      "status": "FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e8_single_token_generation",
+      "description": "max_new_tokens=1 \u2014 degenerate single-step decode.",
+      "expected_to_fail": false,
+      "status": "FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e9_prefetch_threshold_zero",
+      "description": "prefetch_confidence_threshold=0.0 at a 400MB budget \u2014 maximal speculative thrash.",
+      "expected_to_fail": false,
+      "status": "FAIL",
+      "error": "RuntimeError: HBM pool out of memory for expert (0, 3)"
+    },
+    {
+      "case": "e10_patch_unpatch_leak",
+      "description": "5x construct+unpatch \u2014 VRAM must return near baseline (the full suite builds 40+ wrappers).",
+      "expected_to_fail": false,
+      "status": "PASS",
+      "result": {
+        "baseline_allocated_mb": 2910.4,
+        "final_allocated_mb": 3534.3,
+        "growth_mb": 623.9,
+        "leak_suspected": true
+      }
+    }
+  ],
+  "benchmark_mode": "live",
+  "computation_type": "measured",
+  "elapsed_seconds": 5.59,
+  "model_id": "C:\\Users\\Kruti\\Desktop\\PROG\\Nebula\\Nebula\\models\\Qwen1.5-4x0.5B-Chat-MoE"
+}
