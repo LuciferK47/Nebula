@@ -8,6 +8,7 @@ import { Limits } from './components/Limits';
 import { LiveLab } from './components/LiveLab';
 import { Install } from './components/Install';
 import { SiteFooter } from './components/SiteFooter';
+import { FloatingSectionNav } from './components/SectionNav';
 
 export function App() {
   return (
@@ -23,6 +24,7 @@ export function App() {
           <LiveLab />
           <Install />
         </main>
+        <FloatingSectionNav />
         <SiteFooter />
       </div>
     </LiveModeProvider>

@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Kicker } from './Kicker';
 import { qwenLocalityRatio, s1ResidentFractionAt } from '../lib/results';
 import { fadeUp, stagger } from '../utils/motion';
+import { SectionHeaderArrow, SectionBottomJump } from './SectionNav';
 
 export function Limits() {
   const residentFraction600 = s1ResidentFractionAt(600);
@@ -35,13 +36,16 @@ export function Limits() {
   ];
 
   return (
-    <section id="limits" className="bg-cream py-16 md:py-24 border-t border-ink/10" aria-labelledby="limits-title">
+    <section id="limits" className="bg-cream py-16 md:py-24 border-t border-ink/10 scroll-mt-20" aria-labelledby="limits-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink/15 pb-5">
           <div>
-            <Kicker as="p" className="text-ink/60 font-semibold">
-              04 — Architectural Constraints & Robustness Disclosures
-            </Kicker>
+            <div className="flex items-center gap-3">
+              <Kicker as="p" className="text-ink/60 font-semibold">
+                04 — Architectural Constraints & Robustness Disclosures
+              </Kicker>
+              <SectionHeaderArrow nextId="live-lab" nextNum="05" nextLabel="Live Inference Studio" isDark={false} />
+            </div>
             <h2
               id="limits-title"
               className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-ink"
@@ -180,6 +184,13 @@ export function Limits() {
             </div>
           </motion.div>
         </motion.div>
+
+        <SectionBottomJump
+          nextId="live-lab"
+          nextNum="05"
+          nextLabel="Live Hardware Inference Studio"
+          isDark={false}
+        />
       </div>
     </section>
   );

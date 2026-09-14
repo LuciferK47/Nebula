@@ -3,6 +3,7 @@ import { Kicker } from './Kicker';
 import { PillButton } from './PillButton';
 import { crossoverAt, qwenLocalityRatio } from '../lib/results';
 import { fadeUp, stagger } from '../utils/motion';
+import { SectionBottomJump } from './SectionNav';
 
 export function Hero() {
   const crossover600 = crossoverAt(600);
@@ -94,6 +95,15 @@ export function Hero() {
               </p>
             </div>
           ))}
+        </motion.div>
+
+        <motion.div variants={fadeUp}>
+          <SectionBottomJump
+            nextId="architecture"
+            nextNum="01"
+            nextLabel="Heterogeneous Memory Architecture"
+            isDark={false}
+          />
         </motion.div>
       </motion.div>
     </section>

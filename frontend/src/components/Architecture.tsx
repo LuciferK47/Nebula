@@ -3,6 +3,7 @@ import { Kicker } from './Kicker';
 import { tiers } from '../data/tiers';
 import { harness } from '../data/benchmarks';
 import { fadeUp, inView, stagger } from '../utils/motion';
+import { SectionHeaderArrow, SectionBottomJump } from './SectionNav';
 
 const dotFor: Record<string, string> = {
   hbm: '#e4512b',
@@ -12,13 +13,16 @@ const dotFor: Record<string, string> = {
 
 export function Architecture() {
   return (
-    <section id="architecture" className="on-ink bg-ink py-16 md:py-24" aria-labelledby="arch-title">
+    <section id="architecture" className="on-ink bg-ink py-16 md:py-24 scroll-mt-20" aria-labelledby="arch-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-line pb-5">
           <div>
-            <Kicker as="p" className="text-amber">
-              01 — Heterogeneous Memory Architecture
-            </Kicker>
+            <div className="flex items-center gap-3">
+              <Kicker as="p" className="text-amber">
+                01 — Heterogeneous Memory Architecture
+              </Kicker>
+              <SectionHeaderArrow nextId="explorer" nextNum="02" nextLabel="Interactive Hierarchy" isDark={true} />
+            </div>
             <h2
               id="arch-title"
               className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-cream"
@@ -103,6 +107,13 @@ export function Architecture() {
             {harness.detail}
           </p>
         </div>
+
+        <SectionBottomJump
+          nextId="explorer"
+          nextNum="02"
+          nextLabel="Interactive Hierarchy"
+          isDark={true}
+        />
       </div>
     </section>
   );

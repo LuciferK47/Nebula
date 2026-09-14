@@ -7,6 +7,7 @@ import { crossoverAt } from '../../lib/results';
 import { usePrefersReducedMotion, useIsNarrowViewport, useInViewOnce } from '../../lib/useMediaHints';
 import { RECORDED_S3_TRACE, type RecordedTraceEvent } from '../../data/traceEvents';
 import type { SceneProps } from '../../three/Scene';
+import { SectionHeaderArrow, SectionBottomJump } from '../SectionNav';
 
 type Mode = 'weight_transfer' | 'hybrid' | 'trace_replay';
 
@@ -78,13 +79,16 @@ export function ChipExplorer() {
   const activeEvent: RecordedTraceEvent = RECORDED_S3_TRACE[traceStep] || RECORDED_S3_TRACE[0];
 
   return (
-    <section id="explorer" className="on-ink bg-ink py-14 md:py-20 border-t border-ink-line/60" aria-labelledby="explorer-title">
+    <section id="explorer" className="on-ink bg-ink py-14 md:py-20 border-t border-ink-line/60 scroll-mt-20" aria-labelledby="explorer-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Kicker as="p" className="text-amber">
-              02 — Interactive Hierarchy
-            </Kicker>
+            <div className="flex items-center gap-3">
+              <Kicker as="p" className="text-amber">
+                02 — Interactive Hierarchy
+              </Kicker>
+              <SectionHeaderArrow nextId="benchmark" nextNum="03" nextLabel="Empirical Benchmarks" isDark={true} />
+            </div>
             <h2
               id="explorer-title"
               className="mt-5 max-w-[20ch] font-display text-[clamp(2.5rem,5.4vw,4.75rem)] leading-[0.92] text-cream">
@@ -483,6 +487,13 @@ export function ChipExplorer() {
             )}
           </div>
         </div>
+
+        <SectionBottomJump
+          nextId="benchmark"
+          nextNum="03"
+          nextLabel="Empirical Benchmarks"
+          isDark={true}
+        />
       </div>
     </section>
   );

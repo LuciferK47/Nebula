@@ -6,6 +6,7 @@ import { BatchScalingChart } from './charts/BatchScalingChart';
 import { QwenWarmupChart } from './charts/QwenWarmupChart';
 import { crossoverAt, getS1, getS7, getQwenLive, qwenPerTokenDeltas } from '../lib/results';
 import { fadeUp, stagger } from '../utils/motion';
+import { SectionHeaderArrow, SectionBottomJump } from './SectionNav';
 
 const CORE_MECHANISMS = [
   {
@@ -39,13 +40,16 @@ export function Benchmark() {
   const qwenSteps = qwenPerTokenDeltas();
 
   return (
-    <section id="benchmark" className="on-ink bg-ink-soft pb-16 pt-14 md:pb-24" aria-labelledby="bench-title">
+    <section id="benchmark" className="on-ink bg-ink-soft pb-16 pt-14 md:pb-24 scroll-mt-20" aria-labelledby="bench-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-line pb-5">
           <div>
-            <Kicker as="p" className="text-amber">
-              03 — Empirical Performance & Scaling Benchmarks
-            </Kicker>
+            <div className="flex items-center gap-3">
+              <Kicker as="p" className="text-amber">
+                03 — Empirical Performance & Scaling Benchmarks
+              </Kicker>
+              <SectionHeaderArrow nextId="limits" nextNum="04" nextLabel="Robustness & Limits" isDark={true} />
+            </div>
             <h2
               id="bench-title"
               className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-cream"
@@ -222,6 +226,13 @@ export function Benchmark() {
               </motion.div>
             ))}
           </motion.div>
+
+          <SectionBottomJump
+            nextId="limits"
+            nextNum="04"
+            nextLabel="Robustness & Limits"
+            isDark={true}
+          />
         </div>
       </div>
     </section>
