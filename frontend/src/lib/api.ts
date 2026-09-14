@@ -104,7 +104,8 @@ export const api = {
       body: JSON.stringify({
         prompt: params.prompt,
         baseline_id: params.baseline_id,
-        max_new_tokens: params.max_tokens ?? 25,
+        max_tokens: params.max_tokens ?? 128,
+        max_new_tokens: params.max_tokens ?? 128,
         memory_constraint_mb: params.memory_constraint_mb,
         do_sample: params.do_sample ?? false,
         temperature: params.temperature ?? 0.7,

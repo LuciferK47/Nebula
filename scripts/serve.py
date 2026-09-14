@@ -467,8 +467,13 @@ class MemTierRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/run":
             prompt = payload.get("prompt", "Mixture of Experts architecture enables efficient scaling.")
             baseline_id = payload.get("baseline_id", "hybrid_sota_600")
-            raw_tokens = payload.get("max_tokens", 25)
-            if raw_tokens is None or raw_tokens == "" or str(raw_tokens).lower() in ("unlimited", "none", "auto", "0"):
+            raw_tokens = payload.get("max_tokens")
+            if raw_tokens is None:
+                raw_tokens = payload.get("max_new_tokens")
+            if raw_tokens is None:
+                raw_tokens = 128
+
+            if str(raw_tokens).strip().lower() in ("unlimited", "none", "auto", "0", "complete", "eos"):
                 max_tokens = 0
             else:
                 try:
@@ -511,8 +516,13 @@ class MemTierRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/compare":
             prompt = payload.get("prompt", "Mixture of Experts architecture enables efficient scaling.")
-            raw_tokens = payload.get("max_tokens", 25)
-            if raw_tokens is None or raw_tokens == "" or str(raw_tokens).lower() in ("unlimited", "none", "auto", "0"):
+            raw_tokens = payload.get("max_tokens")
+            if raw_tokens is None:
+                raw_tokens = payload.get("max_new_tokens")
+            if raw_tokens is None:
+                raw_tokens = 128
+
+            if str(raw_tokens).strip().lower() in ("unlimited", "none", "auto", "0", "complete", "eos"):
                 max_tokens = 0
             else:
                 try:

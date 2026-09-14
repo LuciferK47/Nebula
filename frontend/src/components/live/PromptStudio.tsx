@@ -43,8 +43,6 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const chatBottomRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     let alive = true;
     api
@@ -62,10 +60,6 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeResult, running]);
 
   async function executeRun(baselineId: string): Promise<RunResult | null> {
     const res = await api.run({
@@ -271,7 +265,6 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
                 )}
               </div>
             </div>
-            <div ref={chatBottomRef} />
           </div>
 
           {/* Prompt Input & Presets */}
