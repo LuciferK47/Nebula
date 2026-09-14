@@ -434,7 +434,7 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
               onChange={(e) => setPrompt(e.target.value)}
               rows={2}
               disabled={running}
-              className="w-full rounded-lg border border-white/15 bg-white/5 p-2.5 font-mono text-xs text-cream outline-none focus:border-amber transition-colors disabled:opacity-50 resize-none"
+              className="w-full rounded-lg border-2 border-orange-500 bg-white/5 p-2.5 font-mono text-xs text-cream outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-500/50 transition-colors disabled:opacity-50 resize-none"
               placeholder="Type a custom prompt to test expert routing..."
             />
 
