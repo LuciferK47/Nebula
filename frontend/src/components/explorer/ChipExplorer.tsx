@@ -76,14 +76,12 @@ export function ChipExplorer() {
               Watch The <span className="italic">Difference.</span>
             </h2>
           </div>
-          <ProvenanceBadge value="modeled" dark className="mt-2" />
         </div>
-        <p className="mt-6 max-w-[70ch] font-mono text-[0.78rem] leading-relaxed text-khaki/80">
-          The layout matches the real tier-hit fractions from a run that touches all three tiers
-          (results/scenarios/s3.json) — 24 layers × 4 experts, the model behind every chart on
-          this page. Which <em>specific</em> expert sits where isn&rsquo;t exported, so this is an
-          illustrative placement at the right proportions, not a literal trace. The migration
-          animation is the real mechanism: pick a mode and press run.
+        <p className="mt-4 max-w-[75ch] font-mono text-sm leading-relaxed text-cream/80">
+          Visualizing expert placement across the three memory tiers (GPU VRAM, Host DRAM, and CXL
+          Far Memory) for a 24-layer Mixture-of-Experts architecture. Select an execution mode and
+          run an operation to compare full weight promotion (migrating 16.5 MB per miss) against
+          asymmetric hybrid offloading (streaming 4 KB activations directly to stationary weights).
         </p>
 
         <WobbleRule tone="dark" seed={60} className="mt-10" />

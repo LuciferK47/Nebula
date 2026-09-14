@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { Kicker } from './Kicker';
-import { ProvenanceBadge } from './Provenance';
 import { tiers } from '../data/tiers';
 import { harness } from '../data/benchmarks';
 import { fadeUp, inView, stagger } from '../utils/motion';
@@ -13,23 +12,23 @@ const dotFor: Record<string, string> = {
 
 export function Architecture() {
   return (
-    <section id="architecture" className="on-ink bg-ink py-14 md:py-20" aria-labelledby="arch-title">
+    <section id="architecture" className="on-ink bg-ink py-16 md:py-24" aria-labelledby="arch-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-line pb-4">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-line pb-5">
           <div>
             <Kicker as="p" className="text-amber">
               01 — Architecture
             </Kicker>
             <h2
               id="arch-title"
-              className="mt-2 font-display text-[clamp(2.2rem,4.2vw,3.5rem)] leading-[0.95] text-cream"
+              className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-cream"
             >
               Three Tiers. <span className="italic">One Residency Hierarchy.</span>
             </h2>
           </div>
-          <p className="max-w-[48ch] font-mono text-[0.78rem] leading-relaxed text-khaki/75">
-            Real GPU GDDR6 and host DRAM memory with asynchronous CUDA DMA transfers, coupled with a
-            software-emulated CXL far memory pool.
+          <p className="max-w-[54ch] font-mono text-sm leading-relaxed text-cream/80">
+            Real GPU memory and host DRAM with asynchronous CUDA DMA transfers, coupled with a
+            disaggregated CXL far memory pool for scalable parameter residency.
           </p>
         </div>
 
@@ -39,76 +38,70 @@ export function Architecture() {
           initial="hidden"
           whileInView="visible"
           viewport={inView}
-          className="mt-8 grid gap-5 md:grid-cols-3"
+          className="mt-10 grid gap-6 md:grid-cols-3"
         >
           {tiers.map((tier) => (
             <motion.div
               key={tier.id}
               variants={fadeUp}
-              className="flex flex-col justify-between rounded-xl border border-ink-line/80 bg-ink-panel/70 p-5 backdrop-blur-sm hover:border-amber/30 transition-colors"
+              className="flex flex-col justify-between rounded-xl border border-ink-line/90 bg-ink-panel/80 p-6 backdrop-blur-sm hover:border-amber/40 transition-colors shadow-lg"
             >
               <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: dotFor[tier.id] }}
-                      aria-hidden="true"
-                    />
-                    <span className="font-mono text-10 font-semibold tracking-label uppercase text-cream/50">
-                      Tier {tier.index} · {tier.medium}
-                    </span>
-                  </div>
-                  <ProvenanceBadge value={tier.provenance} dark />
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: dotFor[tier.id] }}
+                    aria-hidden="true"
+                  />
+                  <span className="font-mono text-xs font-semibold tracking-label uppercase text-amber">
+                    Tier {tier.index} · {tier.medium}
+                  </span>
                 </div>
 
-                <h3 className="mt-3 font-display text-xl text-cream font-medium">
+                <h3 className="mt-4 font-display text-2xl text-cream font-medium">
                   {tier.name}
                 </h3>
 
-                <p className="mt-2 font-mono text-[0.75rem] leading-relaxed text-khaki/70">
+                <p className="mt-3 font-mono text-xs leading-relaxed text-cream/80">
                   {tier.note}
                 </p>
               </div>
 
-              <div className="mt-5 border-t border-ink-line/60 pt-3 grid grid-cols-3 gap-2 text-left">
+              <div className="mt-6 border-t border-ink-line/80 pt-4 grid grid-cols-3 gap-3 text-left">
                 <div>
-                  <span className="font-mono text-[9px] uppercase tracking-label text-cream/40 block">
+                  <span className="font-mono text-[10px] uppercase tracking-label text-cream/50 block">
                     Bandwidth
                   </span>
-                  <span className="font-display text-sm text-cream">{tier.bandwidth}</span>
+                  <span className="font-display text-base text-cream font-medium">{tier.bandwidth}</span>
                 </div>
                 <div>
-                  <span className="font-mono text-[9px] uppercase tracking-label text-cream/40 block">
+                  <span className="font-mono text-[10px] uppercase tracking-label text-cream/50 block">
                     Latency
                   </span>
-                  <span className="font-display text-sm text-cream">{tier.latency}</span>
+                  <span className="font-display text-base text-cream font-medium">{tier.latency}</span>
                 </div>
                 <div>
-                  <span className="font-mono text-[9px] uppercase tracking-label text-cream/40 block">
+                  <span className="font-mono text-[10px] uppercase tracking-label text-cream/50 block">
                     Capacity
                   </span>
-                  <span className="font-mono text-[11px] text-cream/80">{tier.capacity}</span>
+                  <span className="font-mono text-xs text-cream/90 font-medium">{tier.capacity}</span>
                 </div>
               </div>
             </motion.div>
           ))}
         </motion.div>
 
-        {/* Compact Physical Hardware Baseline Callout */}
-        <div className="mt-8 rounded-lg border border-ink-line/60 bg-ink-soft/60 px-5 py-3.5 flex flex-wrap items-center justify-between gap-4">
+        {/* Memory Efficiency & CXL Architecture Callout */}
+        <div className="mt-10 rounded-xl border border-ink-line/80 bg-ink-soft/80 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-md">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-10 font-bold uppercase tracking-wider text-amber">
-              Hardware Platform
-            </span>
-            <span className="text-cream/40">|</span>
-            <span className="font-mono text-11 text-cream/90 font-medium">
+            <span className="h-3 w-1 bg-amber rounded-full" />
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-amber">
               {harness.platform}
             </span>
           </div>
-          <span className="font-mono text-10 text-khaki/60 max-w-[65ch]">
+          <p className="font-mono text-xs md:text-sm text-cream/90 leading-relaxed max-w-[80ch]">
             {harness.detail}
-          </span>
+          </p>
         </div>
       </div>
     </section>

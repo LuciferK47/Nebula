@@ -1,6 +1,7 @@
 import s1Data from '../data/generated/s1.json';
 import s2Data from '../data/generated/s2.json';
 import s3Data from '../data/generated/s3.json';
+import s7Data from '../data/generated/s7.json';
 import s10Data from '../data/generated/s10.json';
 import qwenLiveData from '../data/generated/qwen14b_live_metrics.json';
 
@@ -36,6 +37,25 @@ export interface S3Scenario {
   description: string;
   placement_stable_across_bandwidth_sweep: boolean;
   runs: ScenarioRun[];
+}
+
+export interface S7Run {
+  batch_size: number;
+  tokens_per_second: number;
+  hit_rate: number;
+  hbm_hit_rate: number;
+  dram_hit_rate: number;
+  cxl_hit_rate: number;
+  execution_mode: 'hybrid' | 'weight_transfer';
+  evictions: number;
+  transfer_mb: number;
+  wall_time_seconds: number;
+}
+
+export interface S7Scenario {
+  scenario: string;
+  description: string;
+  runs: S7Run[];
 }
 
 export interface S10Case {
@@ -115,6 +135,10 @@ export function getS2(): ScenarioRun[] {
 
 export function getS3(): S3Scenario | null {
   return (s3Data as unknown as S3Scenario) ?? null;
+}
+
+export function getS7(): S7Scenario | null {
+  return (s7Data as unknown as S7Scenario) ?? null;
 }
 
 export function getS10(): S10Scenario | null {

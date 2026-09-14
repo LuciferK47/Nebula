@@ -31,6 +31,7 @@ const FILES = [
   { src: "scenarios/s1.json", out: "s1.json" },
   { src: "scenarios/s2.json", out: "s2.json" },
   { src: "scenarios/s3.json", out: "s3.json" },
+  { src: "scenarios/s7.json", out: "s7.json" },
   { src: "scenarios/s10.json", out: "s10.json" },
   { src: "qwen14b_live_metrics.json", out: "qwen14b_live_metrics.json" },
   { src: "qwen14b_benchmark_results.json", out: "qwen14b_benchmark_results.json" },

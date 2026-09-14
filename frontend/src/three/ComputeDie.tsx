@@ -59,7 +59,7 @@ export function ComputeDie({ explode }: ComputeDieProps) {
               position={[xPos, dieH + 0.03, zPos]}
               onPointerOver={(e) => {
                 e.stopPropagation();
-                setHoveredBlock('Tensor / SM Core Cluster: Matrix GEMM Units');
+                setHoveredBlock('Matrix Compute Units');
               }}
               onPointerOut={() => setHoveredBlock(null)}
             >
@@ -85,7 +85,7 @@ export function ComputeDie({ explode }: ComputeDieProps) {
               position={[xPos, dieH + 0.03, zPos]}
               onPointerOver={(e) => {
                 e.stopPropagation();
-                setHoveredBlock('Tensor / SM Core Cluster: Matrix GEMM Units');
+                setHoveredBlock('Matrix Compute Units');
               }}
               onPointerOut={() => setHoveredBlock(null)}
             >
@@ -100,12 +100,12 @@ export function ComputeDie({ explode }: ComputeDieProps) {
         })
       )}
 
-      {/* Central High-Speed L2 Cache Strip */}
+      {/* Central High-Speed Cache Strip */}
       <mesh
         position={[0, dieH + 0.03, -0.06]}
         onPointerOver={(e) => {
           e.stopPropagation();
-          setHoveredBlock('GPU Shared L2 Cache Bank: 32MB Ultra-Low Latency');
+          setHoveredBlock('Fast Shared Cache');
         }}
         onPointerOut={() => setHoveredBlock(null)}
       >
@@ -117,12 +117,12 @@ export function ComputeDie({ explode }: ComputeDieProps) {
         />
       </mesh>
 
-      {/* MoE Gate / Router Dispatcher Accelerator Block (Center-Left) */}
+      {/* MoE Gate / Router Dispatcher Block */}
       <mesh
         position={[-dieW * 0.18, dieH + 0.04, -0.06]}
         onPointerOver={(e) => {
           e.stopPropagation();
-          setHoveredBlock('MoE Router / Top-k Gate: Dynamic Expert Dispatcher');
+          setHoveredBlock('MoE Dynamic Router & Gate');
         }}
         onPointerOut={() => setHoveredBlock(null)}
       >
@@ -136,12 +136,12 @@ export function ComputeDie({ explode }: ComputeDieProps) {
         />
       </mesh>
 
-      {/* High-speed PCIe Gen5 / CXL PHY Controller Strip (Front Edge) */}
+      {/* High-speed CXL / PCIe Interface */}
       <mesh
         position={[0, dieH + 0.025, dieD * 0.44]}
         onPointerOver={(e) => {
           e.stopPropagation();
-          setHoveredBlock('PCIe Gen5 / CXL 3.0 PHY Controller (x16 64 GB/s)');
+          setHoveredBlock('CXL & PCIe High-Speed Interface');
         }}
         onPointerOut={() => setHoveredBlock(null)}
       >
@@ -162,20 +162,20 @@ export function ComputeDie({ explode }: ComputeDieProps) {
           style={{ pointerEvents: 'none' }}
         >
           <div className="whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wide text-cream shadow-xl border border-ink-line">
-            <span className="text-amber">GPU DIE · </span>
+            <span className="text-amber">COMPUTE · </span>
             <span>{hoveredBlock}</span>
           </div>
         </Html>
       )}
 
-      {/* Overall Die Label */}
+      {/* Overall Layer Label */}
       <Html
         position={[0, dieH + 0.45, -dieD / 2 - 0.3]}
         center
         style={{ pointerEvents: 'none' }}
       >
-        <div className="rounded-full bg-ink/90 px-2.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-cream/80 border border-white/10 backdrop-blur-sm">
-          GPU Compute Die
+        <div className="rounded-full bg-ink/90 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-cream border border-white/10 backdrop-blur-sm">
+          Compute Layer
         </div>
       </Html>
     </group>
