@@ -29,10 +29,13 @@ interface HoverInfo {
 
 export function ExpertField({
   placement,
-  explode
-
-
-}: {placement: TierId[];explode: number;}) {
+  explode,
+  focusTier,
+}: {
+  placement: TierId[];
+  explode: number;
+  focusTier?: TierId | null;
+}) {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const [hover, setHover] = React.useState<HoverInfo | null>(null);
   const geometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1, 1, 1, 1), []);
@@ -48,18 +51,23 @@ export function ExpertField({
       for (let expert = 0; expert < EXPERTS_PER_LAYER; expert++) {
         const i = cellIndex(layer, expert);
         const tier = placement[i];
+        const isDimmed = focusTier != null && focusTier !== tier;
         const y = TIER_Y[tier] * (1 + explode * 0.9) + CELL_HEIGHT / 2 + 0.2;
         tmpPosition.set(cellX(expert), y, cellZ(layer));
         tmpScale.set(CELL_SIZE_X, CELL_HEIGHT, CELL_SIZE_Z);
         tmpMatrix.compose(tmpPosition, tmpQuaternion, tmpScale);
         mesh.setMatrixAt(i, tmpMatrix);
-        tmpColor.set(TIER_COLOR[tier]);
+        if (isDimmed) {
+          tmpColor.set('#23252a');
+        } else {
+          tmpColor.set(TIER_COLOR[tier]);
+        }
         mesh.setColorAt(i, tmpColor);
       }
     }
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [placement, explode]);
+  }, [placement, explode, focusTier]);
 
   return (
     <>

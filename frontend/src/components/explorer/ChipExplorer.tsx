@@ -30,6 +30,15 @@ export function ChipExplorer() {
   const [autoRotate, setAutoRotate] = useState(true);
   const [playToken, setPlayToken] = useState(0);
   const [canvasFailed, setCanvasFailed] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const handleRun = () => {
+    setPlayToken((t) => t + 1);
+    setIsAnimating(true);
+    setTimeout(() => {
+      setIsAnimating(false);
+    }, mode === 'weight_transfer' ? 1800 : 1300);
+  };
 
   const placement = useMemo(() => illustrativePlacement(HBM_FRAC, DRAM_FRAC), []);
   const crossover = crossoverAt(600);
@@ -81,71 +90,111 @@ export function ChipExplorer() {
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div ref={containerRef} className="h-[420px] overflow-hidden rounded-lg bg-ink-soft md:h-[520px]">
-            {use2D ?
-            <div className="flex h-full items-center justify-center p-4">
-                <ChipDiagram2D placement={placement} />
-              </div> :
-            Scene ?
-            <Scene
-              placement={placement}
-              explode={explode}
-              mode={mode}
-              playToken={playToken}
-              focusTier={focusTier}
-              autoRotate={autoRotate} /> :
-
-            <div className="flex h-full items-center justify-center font-mono text-11 uppercase tracking-label text-khaki/40">
+            {use2D ? (
+              <div className="flex h-full items-center justify-center p-4">
+                <ChipDiagram2D
+                  placement={placement}
+                  focusTier={focusTier}
+                  mode={mode}
+                  playToken={playToken}
+                />
+              </div>
+            ) : Scene ? (
+              <Scene
+                placement={placement}
+                explode={explode}
+                mode={mode}
+                playToken={playToken}
+                focusTier={focusTier}
+                autoRotate={autoRotate}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center font-mono text-11 uppercase tracking-label text-khaki/40">
                 Loading scene…
               </div>
-            }
+            )}
           </div>
 
           <div className="flex flex-col gap-6">
             <div>
               <Kicker className="text-cream/40">Mode</Kicker>
               <div className="mt-3 flex gap-2">
-                {(['weight_transfer', 'hybrid'] as Mode[]).map((m) =>
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMode(m)}
-                  className={`flex-1 rounded-full border px-3 py-2 font-mono text-10 uppercase tracking-label transition-colors ${
-                  mode === m ?
-                  'border-amber bg-amber/10 text-amber' :
-                  'border-ink-line text-cream/50 hover:text-cream'}`
-                  }>
-
+                {(['weight_transfer', 'hybrid'] as Mode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMode(m)}
+                    className={`flex-1 rounded-full border px-3 py-2 font-mono text-10 uppercase tracking-label transition-all duration-150 active:scale-95 ${
+                      mode === m
+                        ? 'border-amber bg-amber/15 text-amber shadow-[0_0_12px_rgba(245,179,43,0.2)]'
+                        : 'border-ink-line text-cream/50 hover:border-cream/30 hover:text-cream'
+                    }`}
+                  >
                     {m === 'weight_transfer' ? 'Weight transfer' : 'Hybrid'}
                   </button>
-                )}
+                ))}
               </div>
+              <p className="mt-2 text-[11px] font-mono leading-relaxed text-khaki/75">
+                {mode === 'weight_transfer'
+                  ? '• Migrates full 16.5 MB expert weights to HBM, evicting a resident block.'
+                  : '• Keeps weights stationary in DRAM/CXL; streams ~4 KB activation to compute.'}
+              </p>
               <button
                 type="button"
-                onClick={() => setPlayToken((t) => t + 1)}
-                disabled={use2D}
-                className="mt-3 w-full rounded-full bg-cream px-4 py-2.5 font-mono text-10 font-medium uppercase tracking-label text-ink transition-colors hover:bg-amber disabled:cursor-not-allowed disabled:opacity-40">
-
-                Run {mode === 'weight_transfer' ? 'a promotion' : 'an activation offload'}
+                onClick={handleRun}
+                disabled={!Scene && !use2D}
+                className={`mt-3 flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 font-mono text-10 font-medium uppercase tracking-label transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 ${
+                  isAnimating
+                    ? 'bg-amber text-ink shadow-[0_0_16px_rgba(245,179,43,0.6)] ring-2 ring-amber'
+                    : 'bg-cream text-ink hover:bg-amber hover:shadow-[0_0_12px_rgba(245,179,43,0.3)]'
+                }`}
+              >
+                {isAnimating && (
+                  <span className="inline-block h-2 w-2 animate-ping rounded-full bg-ink" />
+                )}
+                {isAnimating
+                  ? mode === 'weight_transfer'
+                    ? 'Promoting expert (16.5 MB)...'
+                    : 'Offloading activation (4 KB)...'
+                  : mode === 'weight_transfer'
+                  ? 'Run a promotion'
+                  : 'Run an activation offload'}
               </button>
             </div>
 
             <div>
-              <Kicker className="text-cream/40">Isolate a tier</Kicker>
-              <div className="mt-3 flex gap-2">
-                {(['hbm', 'dram', 'cxl'] as TierId[]).map((tier) =>
-                <button
-                  key={tier}
-                  type="button"
-                  onClick={() => setFocusTier((f) => f === tier ? null : tier)}
-                  className="flex-1 rounded-full border px-2 py-2 font-mono text-10 uppercase tracking-label transition-colors"
-                  style={{
-                    borderColor: focusTier === tier ? TIER_HEX[tier] : '#32322c',
-                    color: focusTier === tier ? TIER_HEX[tier] : 'rgba(244,243,237,0.5)'
-                  }}>
-
-                    {TIER_LABEL[tier]}
+              <div className="flex items-center justify-between">
+                <Kicker className="text-cream/40">Isolate a tier</Kicker>
+                {focusTier && (
+                  <button
+                    type="button"
+                    onClick={() => setFocusTier(null)}
+                    className="font-mono text-[10px] uppercase tracking-wider text-amber/80 underline decoration-amber/40 hover:text-amber"
+                  >
+                    Clear Filter
                   </button>
                 )}
+              </div>
+              <div className="mt-3 flex gap-2">
+                {(['hbm', 'dram', 'cxl'] as TierId[]).map((tier) => {
+                  const isFocused = focusTier === tier;
+                  return (
+                    <button
+                      key={tier}
+                      type="button"
+                      onClick={() => setFocusTier((f) => (f === tier ? null : tier))}
+                      className="flex-1 rounded-full border px-2 py-2 font-mono text-10 uppercase tracking-label transition-all duration-150 active:scale-95"
+                      style={{
+                        borderColor: isFocused ? TIER_HEX[tier] : '#32322c',
+                        backgroundColor: isFocused ? `${TIER_HEX[tier]}22` : 'transparent',
+                        color: isFocused ? TIER_HEX[tier] : 'rgba(244,243,237,0.5)',
+                        boxShadow: isFocused ? `0 0 10px ${TIER_HEX[tier]}33` : 'none',
+                      }}
+                    >
+                      {TIER_LABEL[tier]}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

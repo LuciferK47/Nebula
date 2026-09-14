@@ -52,7 +52,7 @@ export function Scene({
         <TierPlates explode={explode} focusTier={focusTier} />
 
         {/* MoE Expert Residency Matrix (24 Layers x 4 Experts) */}
-        <ExpertField placement={placement} explode={explode} />
+        <ExpertField placement={placement} explode={explode} focusTier={focusTier} />
 
         {/* Dynamic Weight Promotion vs Activation Offload Simulation */}
         <MigrationDemo mode={mode} playToken={playToken} explode={explode} />
