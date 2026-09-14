@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { Kicker } from './Kicker';
-import { ProvenanceBadge } from './Provenance';
 import { qwenLocalityRatio, s1ResidentFractionAt } from '../lib/results';
 import { fadeUp, stagger } from '../utils/motion';
 
@@ -41,13 +40,13 @@ export function Limits() {
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink/15 pb-5">
           <div>
             <Kicker as="p" className="text-ink/60 font-semibold">
-              04 — Engineering Disclosures & Validation
+              04 — Architectural Constraints & Robustness Disclosures
             </Kicker>
             <h2
               id="limits-title"
               className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-ink"
             >
-              System Boundaries & <span className="italic">Disclosures.</span>
+              System Boundaries & <span className="italic">Automated Stress Validation.</span>
             </h2>
           </div>
           <p className="max-w-[54ch] font-mono text-sm leading-relaxed text-ink/80">
@@ -72,7 +71,6 @@ export function Limits() {
                 <span className="font-mono text-xs font-bold uppercase tracking-wider text-ink/60">
                   Model Locality Analysis
                 </span>
-                <ProvenanceBadge value="measured" />
               </div>
               <h3 className="mt-3 font-display text-xl text-ink font-medium">
                 Synthetic vs. Real MoE Locality
@@ -101,7 +99,6 @@ export function Limits() {
                 <span className="font-mono text-xs font-bold uppercase tracking-wider text-ink/60">
                   Memory Tier Boundaries
                 </span>
-                <ProvenanceBadge value="measured" />
               </div>
               <h3 className="mt-3 font-display text-xl text-ink font-medium">
                 Physical Transfers & Far Memory Links
@@ -128,7 +125,6 @@ export function Limits() {
                 <span className="font-mono text-xs font-bold uppercase tracking-wider text-ink/60">
                   Efficiency vs. Throughput
                 </span>
-                <ProvenanceBadge value="measured" />
               </div>
               <h3 className="mt-3 font-display text-xl text-ink font-medium">
                 PCIe Data Reduction vs. Inference Speedup
@@ -156,7 +152,7 @@ export function Limits() {
                   Automated Stress Validation
                 </span>
                 <span className="font-mono text-xs font-semibold px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Verified Stable
+                  All Suites Passing
                 </span>
               </div>
               <h3 className="mt-3 font-display text-xl text-ink font-medium">

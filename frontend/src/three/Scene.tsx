@@ -10,6 +10,7 @@ import { SiliconInterposer } from './SiliconInterposer';
 import { SubstratePackage } from './SubstratePackage';
 import { BusLines } from './BusLines';
 import { MigrationDemo } from './MigrationDemo';
+import { TraceDemo3D } from './TraceDemo3D';
 import type { TierId } from './layout';
 
 export interface SceneProps {
@@ -19,6 +20,9 @@ export interface SceneProps {
   playToken: number;
   focusTier: TierId | null;
   autoRotate: boolean;
+  traceReplay?: boolean;
+  activeTraceStep?: number;
+  tracePlaying?: boolean;
 }
 
 export function Scene({
@@ -28,6 +32,9 @@ export function Scene({
   playToken,
   focusTier,
   autoRotate,
+  traceReplay,
+  activeTraceStep,
+  tracePlaying,
 }: SceneProps) {
   return (
     <Canvas
@@ -54,8 +61,16 @@ export function Scene({
         {/* MoE Expert Residency Matrix (24 Layers x 4 Experts) */}
         <ExpertField placement={placement} explode={explode} focusTier={focusTier} />
 
-        {/* Dynamic Weight Promotion vs Activation Offload Simulation */}
-        <MigrationDemo mode={mode} playToken={playToken} explode={explode} />
+        {/* Dynamic Weight Promotion vs Activation Offload Simulation OR Slowed Recorded Trace Playback */}
+        {traceReplay ? (
+          <TraceDemo3D
+            explode={explode}
+            activeStep={activeTraceStep ?? 0}
+            isPlaying={tracePlaying ?? false}
+          />
+        ) : (
+          <MigrationDemo mode={mode} playToken={playToken} explode={explode} />
+        )}
       </Suspense>
 
       <OrbitControls

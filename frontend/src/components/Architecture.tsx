@@ -17,13 +17,13 @@ export function Architecture() {
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-line pb-5">
           <div>
             <Kicker as="p" className="text-amber">
-              01 — Architecture
+              01 — Heterogeneous Memory Architecture
             </Kicker>
             <h2
               id="arch-title"
               className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-cream"
             >
-              Three Tiers. <span className="italic">One Residency Hierarchy.</span>
+              Three Heterogeneous Tiers. <span className="italic">One Unified Residency Hierarchy.</span>
             </h2>
           </div>
           <p className="max-w-[54ch] font-mono text-sm leading-relaxed text-cream/80">

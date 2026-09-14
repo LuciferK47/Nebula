@@ -17,13 +17,13 @@ export function LiveLab() {
     <section id="live-lab" className="on-ink bg-ink py-14 md:py-20 border-t border-ink-line/60" aria-labelledby="live-lab-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
         <Kicker as="p" className="text-amber">
-          05 — Live GPU Inference
+          05 — Live Hardware Inference Studio
         </Kicker>
         <h2
           id="live-lab-title"
-          className="mt-5 max-w-[20ch] font-display text-[clamp(2.5rem,5.4vw,4.75rem)] leading-[0.92] text-cream">
-
-          Run It <span className="italic">Yourself.</span>
+          className="mt-3 max-w-[24ch] font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-cream"
+        >
+          Interactive Generation Terminal & <span className="italic">Telemetry.</span>
         </h2>
 
         {state.status === 'live' &&

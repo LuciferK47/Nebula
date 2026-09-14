@@ -7,18 +7,18 @@ export function Install() {
       <div className="mx-auto max-w-site px-5 md:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink/15 pb-4">
           <div>
-            <Kicker as="p" className="text-ink/50">
-              06 — Quickstart & Reproduction
+            <Kicker as="p" className="text-ink/60 font-semibold">
+              06 — Reproduction & Deployment
             </Kicker>
             <h2
               id="install-title"
-              className="mt-2 font-display text-[clamp(2.2rem,4.2vw,3.5rem)] leading-[0.95] text-ink"
+              className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-ink"
             >
-              Clone & <span className="italic">Verify.</span>
+              Reproduce & Deploy the <span className="italic">Evaluation Suite.</span>
             </h2>
           </div>
-          <p className="max-w-[48ch] font-mono text-[0.78rem] leading-relaxed text-ink/65">
-            Requirements: Python 3.10+, PyTorch 2.1+, CUDA 12.0+ with NVIDIA GPU (tested on RTX 4050 6GB).
+          <p className="max-w-[54ch] font-mono text-sm leading-relaxed text-ink/75">
+            Requirements: Python 3.10+, PyTorch 2.1+, CUDA 12.0+ on NVIDIA GPUs (evaluated under constrained memory scenarios like RTX 4050 6GB).
           </p>
         </div>
 

@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { Kicker } from './Kicker';
-import { ProvenanceBadge } from './Provenance';
 import { CrossoverChart } from './charts/CrossoverChart';
 import { CapacityCliffChart } from './charts/CapacityCliffChart';
 import { BatchScalingChart } from './charts/BatchScalingChart';
@@ -45,13 +44,13 @@ export function Benchmark() {
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-line pb-5">
           <div>
             <Kicker as="p" className="text-amber">
-              03 — Benchmark & Evaluation
+              03 — Empirical Performance & Scaling Benchmarks
             </Kicker>
             <h2
               id="bench-title"
               className="mt-2 font-display text-[clamp(2.4rem,4.5vw,3.8rem)] leading-[0.95] text-cream"
             >
-              Moving Less <span className="italic">Beats Moving Faster.</span>
+              Empirical Evidence: <span className="italic">Moving Activations Beats Thrashing Weights.</span>
             </h2>
           </div>
           <p className="max-w-[54ch] font-mono text-sm leading-relaxed text-cream/80">
@@ -197,7 +196,6 @@ export function Benchmark() {
             <span className="font-mono text-xs font-bold uppercase tracking-wider text-amber">
               Architectural Pillars
             </span>
-            <ProvenanceBadge value="measured" dark />
           </div>
 
           <motion.div

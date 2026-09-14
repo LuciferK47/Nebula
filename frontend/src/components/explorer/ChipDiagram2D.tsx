@@ -13,11 +13,15 @@ export function ChipDiagram2D({
   focusTier,
   mode,
   playToken,
+  traceReplay,
+  activeTraceStep,
 }: {
   placement: TierId[];
   focusTier?: TierId | null;
   mode?: 'weight_transfer' | 'hybrid';
   playToken?: number;
+  traceReplay?: boolean;
+  activeTraceStep?: number;
 }) {
   const [lastAction, setLastAction] = useState<string | null>(null);
 
