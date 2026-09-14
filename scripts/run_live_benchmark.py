@@ -75,8 +75,15 @@ def run_benchmark_scenario(
     print(f"\n--- Running Scenario: {name} ---")
     print(f"  HBM: {hbm_budget_mb} MB | DRAM: {dram_budget_mb} MB | Mode: {execution_mode} | Lookahead: {enable_lookahead_gating}")
 
+    vram_bytes = 6 * 1024 * 1024 * 1024
+    if torch.cuda.is_available():
+        try:
+            vram_bytes = int(torch.cuda.get_device_properties(0).total_memory)
+        except Exception:
+            pass
+
     config = MemTierConfig(
-        gpu_vram_bytes=6 * 1024 * 1024 * 1024,
+        gpu_vram_bytes=vram_bytes,
         hbm_cache_budget_bytes=hbm_budget_mb * 1024 * 1024,
         host_dram_bytes=dram_budget_mb * 1024 * 1024,
         cxl_memory_bytes=cxl_budget_mb * 1024 * 1024,

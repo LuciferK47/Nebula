@@ -64,6 +64,43 @@ class MemTierConfig:
         import dataclasses
         return dataclasses.replace(cfg, hardware_profile=prof.name)
 
+    @classmethod
+    def auto_detect(
+        cls,
+        hbm_cache_budget_bytes: Optional[int] = None,
+        host_dram_bytes: Optional[int] = None,
+        cxl_memory_bytes: Optional[int] = None,
+        **overrides,
+    ) -> MemTierConfig:
+        """Dynamically detect host GPU VRAM and host DRAM to adapt automatically to any reviewer machine."""
+        import torch
+
+        detected_vram = 6 * 1024 * 1024 * 1024
+        if torch.cuda.is_available():
+            try:
+                detected_vram = int(torch.cuda.get_device_properties(0).total_memory)
+            except Exception:
+                pass
+
+        detected_dram = 16 * 1024 * 1024 * 1024
+        try:
+            import psutil
+            detected_dram = int(psutil.virtual_memory().total)
+        except Exception:
+            pass
+
+        budget = hbm_cache_budget_bytes if hbm_cache_budget_bytes is not None else int(detected_vram * 0.65)
+        dram_budget = host_dram_bytes if host_dram_bytes is not None else int(detected_dram * 0.5)
+        cxl_budget = cxl_memory_bytes if cxl_memory_bytes is not None else max(32 * 1024 * 1024 * 1024, dram_budget * 2)
+
+        return cls(
+            gpu_vram_bytes=detected_vram,
+            hbm_cache_budget_bytes=budget,
+            host_dram_bytes=dram_budget,
+            cxl_memory_bytes=cxl_budget,
+            **overrides,
+        )
+
 RTX4050_PRESET = MemTierConfig()
 L40S_PRESET = MemTierConfig(
     gpu_vram_bytes=48_000_000_000,

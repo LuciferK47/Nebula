@@ -20,10 +20,10 @@ export function LiveModePill() {
       <a
         href="#live-lab"
         className="flex items-center gap-2 rounded-full border border-olive/40 bg-olive/10 px-4 py-2 font-mono text-10 font-medium uppercase tracking-label text-olive transition-colors duration-150 ease-out hover:bg-olive/20"
-        title="Live GPU Accelerator Connected · Constrained Memory Evaluation">
+        title="Live Inference Active · Constrained Memory Evaluation">
 
         <span className="h-1.5 w-1.5 rounded-full bg-olive animate-pulse" aria-hidden="true" />
-        Live · {state.info.cuda_available ? 'GPU Connected' : 'CPU'}
+        Live · {state.info.cuda_available ? 'Inference Online' : 'CPU Mode'}
       </a>);
 
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiError, type Baseline, type RunResult, type SystemInfo } from '../../lib/api';
 
 const DEFAULT_PROMPTS = [
@@ -17,16 +17,22 @@ const TOKEN_PRESETS = [
   { label: 'Complete (EOS)', val: 0 },
 ];
 
-interface HistoryEntry {
+export interface ComparisonEntry {
   baselineId: string;
   baselineName: string;
-  tokS: number;
-  hitRate: number;
-  transferMb: number;
-  evictions: number;
-  wallTime: number;
-  tokens: number;
-  text: string;
+  color: string;
+  badge?: string;
+  status: 'idle' | 'queued' | 'running' | 'completed' | 'error';
+  tokS?: number;
+  hitRate?: number;
+  transferMb?: number;
+  evictions?: number;
+  wallTime?: number;
+  tokens?: number;
+  text?: string;
+  peakVramMb?: number;
+  error?: string;
+  rawResult?: RunResult;
 }
 
 export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
@@ -38,7 +44,8 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
   const [running, setRunning] = useState(false);
   const [activeResult, setActiveResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [comparisonMap, setComparisonMap] = useState<Record<string, ComparisonEntry>>({});
+  const [comparedPrompt, setComparedPrompt] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -51,6 +58,17 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
         if (alive && list.length > 0) {
           setBaselines(list);
           setSelectedBaseline(list[0].id);
+          const initialMap: Record<string, ComparisonEntry> = {};
+          for (const b of list) {
+            initialMap[b.id] = {
+              baselineId: b.id,
+              baselineName: b.name,
+              color: b.color,
+              badge: b.badge,
+              status: 'idle',
+            };
+          }
+          setComparisonMap(initialMap);
         }
       })
       .catch((err) => {
@@ -61,39 +79,70 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
     };
   }, []);
 
-  async function executeRun(baselineId: string): Promise<RunResult | null> {
-    const res = await api.run({
-      prompt,
-      baseline_id: baselineId,
-      max_tokens: maxTokens,
-      memory_constraint_mb: memoryMb,
-    });
-    setActiveResult(res);
-    setHistory((prev) => [
-      ...prev.filter((h) => h.baselineId !== baselineId),
-      {
-        baselineId,
-        baselineName: res.baseline.name,
-        tokS: res.tokens_per_second,
-        hitRate: res.hit_rate,
-        transferMb: res.transfer_mb,
-        evictions: res.evictions,
-        wallTime: res.wall_time_seconds,
-        tokens: res.generated_tokens,
-        text: res.generated_text,
-      },
-    ]);
-    return res;
-  }
-
   async function handleRunSingle() {
-    if (running) return;
+    if (running || !baselines) return;
     setRunning(true);
     setError(null);
+    setComparedPrompt(prompt);
+
+    // Set targeted baseline to running in comparison matrix
+    setComparisonMap((prev) => ({
+      ...prev,
+      [selectedBaseline]: {
+        ...(prev[selectedBaseline] || {
+          baselineId: selectedBaseline,
+          baselineName: activeBaselineObj?.name || selectedBaseline,
+          color: activeBaselineObj?.color || '#10b981',
+          badge: activeBaselineObj?.badge || '',
+        }),
+        status: 'running',
+        error: undefined,
+      },
+    }));
+
     try {
-      await executeRun(selectedBaseline);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Inference request failed.');
+      const res = await api.run({
+        prompt,
+        baseline_id: selectedBaseline,
+        max_tokens: maxTokens,
+        memory_constraint_mb: memoryMb,
+      });
+      setActiveResult(res);
+      setComparisonMap((prev) => ({
+        ...prev,
+        [selectedBaseline]: {
+          baselineId: selectedBaseline,
+          baselineName: res.baseline.name,
+          color: res.baseline.color,
+          badge: res.baseline.badge,
+          status: 'completed',
+          tokS: res.tokens_per_second,
+          hitRate: res.hit_rate,
+          transferMb: res.transfer_mb,
+          evictions: res.evictions,
+          wallTime: res.wall_time_seconds,
+          tokens: res.generated_tokens,
+          text: res.generated_text,
+          peakVramMb: res.peak_vram_mb,
+          rawResult: res,
+        },
+      }));
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Inference request failed.';
+      setError(msg);
+      setComparisonMap((prev) => ({
+        ...prev,
+        [selectedBaseline]: {
+          ...(prev[selectedBaseline] || {
+            baselineId: selectedBaseline,
+            baselineName: activeBaselineObj?.name || selectedBaseline,
+            color: activeBaselineObj?.color || '#10b981',
+            badge: activeBaselineObj?.badge || '',
+          }),
+          status: 'error',
+          error: msg,
+        },
+      }));
     } finally {
       setRunning(false);
     }
@@ -103,20 +152,136 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
     if (running || !baselines || baselines.length === 0) return;
     setRunning(true);
     setError(null);
+    setComparedPrompt(prompt);
     setBatchProgress({ current: 0, total: baselines.length });
+
+    // Cleanly initialize all baselines for this test: first is running, others queued
+    const freshMap: Record<string, ComparisonEntry> = {};
+    for (let i = 0; i < baselines.length; i++) {
+      const b = baselines[i];
+      freshMap[b.id] = {
+        baselineId: b.id,
+        baselineName: b.name,
+        color: b.color,
+        badge: b.badge,
+        status: i === 0 ? 'running' : 'queued',
+      };
+    }
+    setComparisonMap(freshMap);
+
+    let flagshipResult: RunResult | null = null;
 
     try {
       for (let i = 0; i < baselines.length; i++) {
+        const b = baselines[i];
         setBatchProgress({ current: i + 1, total: baselines.length });
-        setSelectedBaseline(baselines[i].id);
-        await executeRun(baselines[i].id);
+
+        // Ensure current item is marked running
+        setComparisonMap((prev) => ({
+          ...prev,
+          [b.id]: {
+            ...(prev[b.id] || {
+              baselineId: b.id,
+              baselineName: b.name,
+              color: b.color,
+              badge: b.badge,
+            }),
+            status: 'running',
+          },
+        }));
+
+        try {
+          const res = await api.run({
+            prompt,
+            baseline_id: b.id,
+            max_tokens: maxTokens,
+            memory_constraint_mb: memoryMb,
+          });
+
+          if (b.id.includes('hybrid_sota') && !flagshipResult) {
+            flagshipResult = res;
+          }
+
+          setComparisonMap((prev) => {
+            const nextMap = { ...prev };
+            nextMap[b.id] = {
+              baselineId: b.id,
+              baselineName: res.baseline.name,
+              color: res.baseline.color,
+              badge: res.baseline.badge,
+              status: 'completed',
+              tokS: res.tokens_per_second,
+              hitRate: res.hit_rate,
+              transferMb: res.transfer_mb,
+              evictions: res.evictions,
+              wallTime: res.wall_time_seconds,
+              tokens: res.generated_tokens,
+              text: res.generated_text,
+              peakVramMb: res.peak_vram_mb,
+              rawResult: res,
+            };
+            if (i + 1 < baselines.length) {
+              const nextB = baselines[i + 1];
+              nextMap[nextB.id] = {
+                ...(nextMap[nextB.id] || {
+                  baselineId: nextB.id,
+                  baselineName: nextB.name,
+                  color: nextB.color,
+                  badge: nextB.badge,
+                }),
+                status: 'running',
+              };
+            }
+            return nextMap;
+          });
+
+          setActiveResult(res);
+        } catch (itemErr: any) {
+          const itemErrMsg = itemErr instanceof ApiError ? itemErr.message : 'Execution failed';
+          setComparisonMap((prev) => ({
+            ...prev,
+            [b.id]: {
+              ...(prev[b.id] || {
+                baselineId: b.id,
+                baselineName: b.name,
+                color: b.color,
+                badge: b.badge,
+              }),
+              status: 'error',
+              error: itemErrMsg,
+            },
+          }));
+        }
       }
-    } catch (err) {
+
+      // Conclude with flagship SOTA in assistant bubble if evaluated
+      if (flagshipResult) {
+        setActiveResult(flagshipResult);
+        setSelectedBaseline(flagshipResult.baseline.id);
+      }
+    } catch (err: any) {
       setError(err instanceof ApiError ? err.message : 'Batch evaluation encountered an error.');
     } finally {
       setRunning(false);
       setBatchProgress(null);
     }
+  }
+
+  function handleClearComparison() {
+    if (running || !baselines) return;
+    const resetMap: Record<string, ComparisonEntry> = {};
+    for (const b of baselines) {
+      resetMap[b.id] = {
+        baselineId: b.id,
+        baselineName: b.name,
+        color: b.color,
+        badge: b.badge,
+        status: 'idle',
+      };
+    }
+    setComparisonMap(resetMap);
+    setComparedPrompt(null);
+    setActiveResult(null);
   }
 
   const handleCopy = () => {
@@ -130,23 +295,18 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
 
   return (
     <div className="rounded-xl border border-white/10 bg-[#0c0d12] p-4 md:p-6 shadow-2xl space-y-4">
-      {/* Top Header: Model & GPU Status */}
+      {/* Top Header: Model & Inference Engine Status */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3.5">
         <div className="flex items-center gap-2.5">
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber text-ink font-bold font-mono text-xs">
             N
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-semibold text-cream">
-                Nebula MoE Inference Assistant
-              </span>
-              <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-2 py-0.2 font-mono text-[9px] font-medium border border-emerald-500/30">
-                GPU Connected
-              </span>
-            </div>
+            <span className="font-mono text-xs font-semibold text-cream">
+              Nebula MoE Inference Assistant
+            </span>
             <p className="font-mono text-[10px] text-cream/50">
-              Evaluated under constrained memory scenarios (Qwen1.5-4x0.5B MoE)
+              Hierarchical CXL memory tiering & dynamic expert routing ({systemInfo?.device_name ? `${systemInfo.device_name}` : 'Hardware Auto-Detected'})
             </p>
           </div>
         </div>
@@ -350,7 +510,13 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
                     <button
                       key={b.id}
                       type="button"
-                      onClick={() => setSelectedBaseline(b.id)}
+                      onClick={() => {
+                        setSelectedBaseline(b.id);
+                        const existing = comparisonMap[b.id];
+                        if (existing?.status === 'completed' && existing.rawResult) {
+                          setActiveResult(existing.rawResult);
+                        }
+                      }}
                       disabled={running}
                       className={`rounded-md border px-2 py-1 font-mono text-[10px] font-semibold transition-all ${
                         isSel
@@ -414,55 +580,186 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
             </div>
           </div>
 
-          {/* Comparative Baseline Matrix */}
+          {/* Clean Deterministic Strategy Comparison Matrix */}
           <div className="rounded-xl border border-white/10 bg-[#111319] p-3 space-y-2">
-            <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
-              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/90">
-                Strategy Comparison Matrix
-              </span>
-              <span className="font-mono text-[9px] text-amber font-semibold">
-                {history.length} evaluated
-              </span>
-            </div>
+            {(() => {
+              const completedEntries = Object.values(comparisonMap).filter((e) => e.status === 'completed');
+              const completedCount = completedEntries.length;
+              const hasEvaluated =
+                completedCount > 0 ||
+                Object.values(comparisonMap).some((e) => e.status === 'running' || e.status === 'queued');
+              const maxTokS = Math.max(...completedEntries.map((item) => item.tokS || 0), 12);
 
-            {history.length > 0 ? (
-              <div className="space-y-2">
-                {history.map((h) => {
-                  const maxTokS = Math.max(...history.map((item) => item.tokS), 12);
-                  const barWidth = Math.min(100, Math.max(12, (h.tokS / maxTokS) * 100));
-                  const isHybrid = h.baselineId.includes('hybrid');
-
-                  return (
-                    <div key={h.baselineId} className="rounded bg-white/[0.02] p-1.5 border border-white/5 space-y-1">
-                      <div className="flex items-center justify-between font-mono text-[11px]">
-                        <span className={isHybrid ? 'text-amber font-semibold' : 'text-cream/80'}>
-                          {h.baselineName}
+              return (
+                <>
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/90">
+                        Strategy Comparison Matrix
+                      </span>
+                      {completedCount > 0 && (
+                        <span className="font-mono text-[9px] text-amber font-semibold">
+                          {completedCount}/{baselines?.length || 5} evaluated
                         </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-cream/50 text-[9px]">{(h.hitRate * 100).toFixed(0)}% hit</span>
-                          <span className="text-cream/50 text-[9px]">{h.transferMb.toFixed(0)} MB</span>
-                          <span className={isHybrid ? 'text-amber font-bold' : 'text-cream/90 font-semibold'}>
-                            {h.tokS.toFixed(1)} tok/s
-                          </span>
-                        </div>
-                      </div>
-                      <div className="h-1.5 w-full rounded bg-white/5 overflow-hidden">
-                        <div
-                          className={`h-full rounded transition-all duration-300 ${
-                            isHybrid ? 'bg-amber' : 'bg-slate-400'
-                          }`}
-                          style={{ width: `${barWidth}%` }}
-                        />
-                      </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed border-white/10 p-3.5 text-center font-mono text-[11px] text-cream/40">
-                Execute runs or click &ldquo;Run All 5 Baselines&rdquo; to populate comparative matrix.
-              </div>
-            )}
+                    {hasEvaluated && (
+                      <button
+                        type="button"
+                        onClick={handleClearComparison}
+                        disabled={running}
+                        className="rounded px-1.5 py-0.5 font-mono text-[9px] text-cream/50 hover:text-amber hover:bg-white/5 transition-colors disabled:opacity-30"
+                        title="Clear all comparison results"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  {comparedPrompt && prompt !== comparedPrompt && completedCount > 0 && (
+                    <div className="rounded bg-amber/10 border border-amber/20 px-2.5 py-1 flex items-center justify-between text-[10px] font-mono text-amber">
+                      <span>Matrix reflects earlier prompt</span>
+                      <button
+                        type="button"
+                        onClick={handleRunAllBaselines}
+                        disabled={running}
+                        className="underline font-bold hover:text-cream"
+                      >
+                        Re-run all
+                      </button>
+                    </div>
+                  )}
+
+                  {baselines && baselines.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {baselines.map((b) => {
+                        const entry = comparisonMap[b.id] || {
+                          baselineId: b.id,
+                          baselineName: b.name,
+                          color: b.color,
+                          badge: b.badge,
+                          status: 'idle',
+                        };
+                        const isSelected = selectedBaseline === b.id;
+                        const isHybrid = b.id.includes('hybrid');
+                        const isRunningItem = entry.status === 'running';
+                        const isQueued = entry.status === 'queued';
+                        const isCompleted = entry.status === 'completed';
+                        const isError = entry.status === 'error';
+
+                        const barWidth =
+                          isCompleted && entry.tokS
+                            ? Math.min(100, Math.max(10, (entry.tokS / maxTokS) * 100))
+                            : 0;
+
+                        return (
+                          <div
+                            key={b.id}
+                            onClick={() => {
+                              if (isCompleted && entry.rawResult) {
+                                setSelectedBaseline(b.id);
+                                setActiveResult(entry.rawResult);
+                              }
+                            }}
+                            className={`rounded-lg p-2 border transition-all ${
+                              isCompleted ? 'cursor-pointer hover:border-amber/40 hover:bg-white/[0.04]' : ''
+                            } ${
+                              isSelected
+                                ? 'border-amber/60 bg-amber/[0.06] shadow-sm'
+                                : 'border-white/5 bg-white/[0.02]'
+                            } ${isRunningItem ? 'border-amber/50 bg-amber/[0.04]' : ''}`}
+                          >
+                            <div className="flex items-center justify-between font-mono text-[11px]">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {isRunningItem && (
+                                  <span className="h-2 w-2 shrink-0 rounded-full bg-amber animate-ping" />
+                                )}
+                                {isQueued && (
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cream/30" />
+                                )}
+                                {isCompleted && (
+                                  <span
+                                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                    style={{ backgroundColor: b.color || '#10b981' }}
+                                  />
+                                )}
+                                {isError && (
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" />
+                                )}
+                                {entry.status === 'idle' && (
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/20" />
+                                )}
+
+                                <span
+                                  className={`truncate ${
+                                    isHybrid ? 'text-amber font-semibold' : 'text-cream/90'
+                                  }`}
+                                >
+                                  {b.name}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0 font-mono">
+                                {isRunningItem && (
+                                  <span className="text-amber text-[10px] animate-pulse">Running…</span>
+                                )}
+                                {isQueued && (
+                                  <span className="text-cream/40 text-[9px]">Queued</span>
+                                )}
+                                {entry.status === 'idle' && (
+                                  <span className="text-cream/30 text-[9px]">Ready</span>
+                                )}
+                                {isError && (
+                                  <span className="text-rose-400 text-[9px]">Failed</span>
+                                )}
+                                {isCompleted && (
+                                  <>
+                                    <span className="text-cream/50 text-[9px]">
+                                      {((entry.hitRate ?? 0) * 100).toFixed(0)}% hit
+                                    </span>
+                                    <span className="text-cream/50 text-[9px]">
+                                      {(entry.transferMb ?? 0).toFixed(0)} MB
+                                    </span>
+                                    <span
+                                      className={`text-[11px] ${
+                                        isHybrid ? 'text-amber font-bold' : 'text-cream/90 font-semibold'
+                                      }`}
+                                    >
+                                      {(entry.tokS ?? 0).toFixed(1)} tok/s
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Progress / Comparison Bar */}
+                            {isCompleted && (
+                              <div className="h-1.5 w-full rounded bg-white/5 overflow-hidden mt-1.5">
+                                <div
+                                  className={`h-full rounded transition-all duration-300 ${
+                                    isHybrid ? 'bg-amber' : 'bg-slate-400'
+                                  }`}
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                            )}
+                            {isRunningItem && (
+                              <div className="h-1 w-full rounded bg-white/5 overflow-hidden mt-1.5">
+                                <div className="h-full bg-amber/80 rounded animate-pulse w-full" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-white/10 p-3.5 text-center font-mono text-[11px] text-cream/40">
+                      Loading baseline configurations…
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

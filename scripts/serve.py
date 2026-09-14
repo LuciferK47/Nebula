@@ -157,7 +157,11 @@ def load_model_resources():
             tokenizer.pad_token = tokenizer.eos_token
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+        dtype = (
+            torch.bfloat16
+            if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+            else (torch.float16 if torch.cuda.is_available() else torch.float32)
+        )
         print(f"[Server] Loading {DEFAULT_MODEL_ID} on {device.upper()} (dtype: {dtype})...")
         base_model = AutoModelForCausalLM.from_pretrained(
             DEFAULT_MODEL_ID,
@@ -272,8 +276,16 @@ def run_single_inference(
     from memtier_moe.core.config import MemTierConfig
     from memtier_moe.runtime.tiered_model import TieredMoEWrapper
 
+    # Dynamically detect hardware memory so reviewer can test on any GPU or CPU without tinkering
+    vram_bytes = 6 * 1024 * 1024 * 1024
+    if torch.cuda.is_available():
+        try:
+            vram_bytes = int(torch.cuda.get_device_properties(0).total_memory)
+        except Exception:
+            pass
+
     config = MemTierConfig(
-        gpu_vram_bytes=6 * 1024 * 1024 * 1024,
+        gpu_vram_bytes=vram_bytes,
         hbm_cache_budget_bytes=spec["hbm_budget_mb"] * 1024 * 1024,
         host_dram_bytes=spec["dram_budget_mb"] * 1024 * 1024,
         cxl_memory_bytes=spec["cxl_budget_mb"] * 1024 * 1024,

@@ -107,8 +107,15 @@ def run_generation(
     """One tagged generation run. Every field a caller might need for a
     scenario JSON is produced here so scenario functions stay thin
     wrappers around a sweep of parameters."""
+    vram_bytes = 6 * GB
+    if torch.cuda.is_available():
+        try:
+            vram_bytes = int(torch.cuda.get_device_properties(0).total_memory)
+        except Exception:
+            pass
+
     config_kwargs: Dict[str, Any] = dict(
-        gpu_vram_bytes=6 * GB,
+        gpu_vram_bytes=vram_bytes,
         hbm_cache_budget_bytes=hbm_mb * MB,
         host_dram_bytes=dram_mb * MB,
         cxl_memory_bytes=cxl_mb * MB,

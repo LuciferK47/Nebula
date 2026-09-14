@@ -171,8 +171,15 @@ def main():
 
     # 3. Partition Model & Wrap with MemTier-MoE
     print("\n[3/4] Partitioning layers into 3-Tier Hierarchy (HBM / DRAM / CXL)...")
+    vram_bytes = 6 * 1024 * 1024 * 1024
+    if torch.cuda.is_available():
+        try:
+            vram_bytes = int(torch.cuda.get_device_properties(0).total_memory)
+        except Exception:
+            pass
+
     config = MemTierConfig(
-        gpu_vram_bytes=6 * 1024 * 1024 * 1024,
+        gpu_vram_bytes=vram_bytes,
         hbm_cache_budget_bytes=args.hbm_budget_mb * 1024 * 1024,
         host_dram_bytes=args.dram_budget_mb * 1024 * 1024,
         cxl_memory_bytes=8 * 1024 * 1024 * 1024,
