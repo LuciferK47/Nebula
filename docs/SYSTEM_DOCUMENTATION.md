@@ -407,10 +407,10 @@ The architectural core of MemTier-MoE's live model-in-the-loop serving:
 
 ---
 
-### 7. `scripts` & `presentation` — Presentation Server, Interactive Frontend, and Stress Testing
+### 7. `scripts` & `frontend` — API Server, Interactive Frontend, and Stress Testing
 
 #### `scripts/serve.py`
-A presentation server using Python's standard `http.server.ThreadingHTTPServer` on port `8000`:
+An API and static-file server using Python's standard `http.server.ThreadingHTTPServer` on port `8000`, serving the built `frontend/dist`:
 - **Model Caching**: Loads and caches model weights, tokenizer, and co-occurrence models once in GPU VRAM under a global thread lock (`MODEL_LOCK`), avoiding reinitialization latency across requests.
 - **Dynamic Memory Constraint Parameter**: Accepts `memory_constraint_mb` via JSON payload in `/api/run` and `/api/compare`, dynamically reconfiguring the HBM cache budget on physical execution tiers.
 - **Chat Formatting**: Automatically applies instruction chat templates (`tokenizer.apply_chat_template`) for coherent, grammatically sound natural language generation.
@@ -421,20 +421,12 @@ A presentation server using Python's standard `http.server.ThreadingHTTPServer` 
   - `POST /api/run`: Executes live autoregressive inference for a single baseline.
   - `POST /api/compare`: Runs baselines sequentially and returns full comparative benchmark results.
 
-#### `presentation/` (Frontend UI)
-Built with Vanilla HTML5, CSS3, and JavaScript:
-- **Prompt Studio**: Textarea with character counter, instant preset prompt chips, token ceiling slider (16–1024) with auto EOS toggle, and temperature sampling controls.
-- **GPU Memory Constraint Controls**:
-  - Interactive slider (300 MB to 2,500 MB in 50 MB increments).
-  - Quick preset chips: `300 MB` (Extreme Pressure), `600 MB` (Default Paper Benchmark), `900 MB` (Dynamic Headroom), `1500 MB` (Large Allocation), and `♾️ Full` (Unconstrained).
-  - Unconstrained checkbox to toggle between strict memory tiering and full VRAM residency.
-- **Console Streamer**: Monospace dark terminal streaming live generated text and individual token IDs.
-- **Baseline Scorecards**: Side-by-side comparative cards showing live throughput, speedup percentages, eviction counts (highlighting zero vs high evictions), PCIe bus data movement, and wall-clock latency.
-- **Chart.js Visualizations**:
-  1. *Throughput Bar Chart* (tok/s).
-  2. *PCIe Data Movement Chart* (MB transferred, log scale).
-  3. *Cache Hit Rate vs. Eviction Count Combo Chart*.
-  4. *3-Tier Memory Distribution Stacked Bar Chart* (HBM, Host DRAM, CXL).
+#### `frontend/` (Frontend UI)
+React + TypeScript + Vite, built with `npm run build` into `frontend/dist` (which `scripts/serve.py` serves directly):
+- **Static-first data**: charts and the 3D explorer read from `results/*.json` (synced at build time by `frontend/scripts/sync-results.mjs`), so the site is fully functional with no backend running.
+- **Live mode**: probes `GET /api/system_info` on load; if `scripts/serve.py` answers, a prompt studio unlocks against `POST /api/run`.
+- **3D memory-tier explorer**: a `@react-three/fiber` scene of the HBM/DRAM/CXL hierarchy, with a mode toggle animating the weight-transfer-vs-hybrid-activation-offload contrast directly.
+- **Charts**: capacity-cliff sweep, hybrid-vs-weight-transfer crossover, and other measured/modeled comparisons, each carrying an explicit provenance badge.
 
 #### `scripts/run_stress_test.py`
 A comprehensive 6-use-case stress test suite validating the physical runtime under extreme operational dimensions:

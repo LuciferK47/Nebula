@@ -1,4 +1,3 @@
-import React from 'react';
 import { Kicker } from './Kicker';
 import { Logo } from './Logo';
 import { SwatchChips } from './SwatchChips';
@@ -31,12 +30,14 @@ export function SiteFooter() {
 
         <WobbleRule tone="dark" seed={210} />
         <div className="flex flex-col gap-3 pt-5 md:flex-row md:items-center md:justify-between">
-          <Kicker className="text-cream/45">Strata is under active development</Kicker>
+          <Kicker className="text-cream/45">MemTier-MoE is under active development</Kicker>
           <a
-            href="#architecture"
+            href="https://github.com/LuciferK47/Nebula"
+            target="_blank"
+            rel="noreferrer"
             className="font-mono text-10 uppercase tracking-label text-cream/70 underline decoration-cream/30 underline-offset-4 transition-colors duration-150 ease-out hover:text-amber hover:decoration-amber">
-            
-            Learn more about what we are building
+
+            View the source on GitHub
           </a>
         </div>
       </div>

@@ -31,7 +31,11 @@ CACHED_MODEL = None
 CACHED_TOKENIZER = None
 CACHED_CO_MODEL = None
 LOCAL_CHAT_MOE = os.path.join(REPO_ROOT, "models", "Qwen1.5-4x0.5B-Chat-MoE")
-DEFAULT_MODEL_ID = LOCAL_CHAT_MOE if os.path.exists(LOCAL_CHAT_MOE) else "Qwen/Qwen1.5-MoE-A2.7B"
+# No fallback to a hub model here: Qwen/Qwen1.5-MoE-A2.7B is 26.68 GB in
+# fp16, which does not fit a 6 GB card and would silently try to download
+# ~28 GB on the first /api/run call. Same reasoning as
+# scripts/run_scenarios.py's --model-id handling.
+DEFAULT_MODEL_ID = LOCAL_CHAT_MOE if os.path.exists(LOCAL_CHAT_MOE) else None
 
 BASELINE_SPECS = [
     {
@@ -120,7 +124,10 @@ def get_system_info() -> Dict[str, Any]:
         "vram_used_gb": vram_used_gb,
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda if cuda_available else None,
-        "default_model": "Qwen1.5-4x0.5B-Chat-MoE (Instruction-Tuned)" if os.path.exists(LOCAL_CHAT_MOE) else DEFAULT_MODEL_ID,
+        "default_model": (
+            "Qwen1.5-4x0.5B-Chat-MoE (Instruction-Tuned)" if DEFAULT_MODEL_ID
+            else "not built — run scripts/build_chat_moe.py"
+        ),
         "active_tiers": ["HBM (GPU VRAM)", "Host DRAM (Pinned)", "CXL Memory Pool (Emulated Tier-3)"],
     }
 
@@ -131,6 +138,15 @@ def load_model_resources():
     with MODEL_LOCK:
         if CACHED_MODEL is not None:
             return CACHED_MODEL, CACHED_TOKENIZER, CACHED_CO_MODEL, CACHED_FREQ_MAP
+
+        if DEFAULT_MODEL_ID is None:
+            raise RuntimeError(
+                f"No model found at {LOCAL_CHAT_MOE}. Build it first with:\n"
+                f"    python scripts/build_chat_moe.py\n"
+                f"There is deliberately no fallback to a HF hub model here — the natural "
+                f"fallback, Qwen/Qwen1.5-MoE-A2.7B, is 26.68 GB in fp16 and does not fit a "
+                f"6 GB card."
+            )
 
         from transformers import AutoModelForCausalLM, AutoTokenizer
         from scripts.run_live_benchmark import load_or_calibrate_co_occurrence
@@ -163,43 +179,43 @@ def load_model_resources():
         return CACHED_MODEL, CACHED_TOKENIZER, CACHED_CO_MODEL, CACHED_FREQ_MAP
 
 
+# (result key, filename, default when absent) — table-driven so adding a
+# new results/*.json file the frontend should see is a one-line change
+# instead of another copy-pasted try/except block. Keys beyond the
+# original three (live_benchmarks, stress_test, pipeline_benchmarks) are
+# additive: the real-MoE data (qwen14b_*) was previously produced but had
+# no endpoint at all, making it unreachable from the frontend.
+_HISTORICAL_FILES: List[tuple] = [
+    ("live_benchmarks", "live_benchmark_results.json", []),
+    ("stress_test", "stress_test_report.json", {}),
+    ("pipeline_benchmarks", "benchmark_results.json", {}),
+    ("qwen14b_live_metrics", "qwen14b_live_metrics.json", {}),
+    ("qwen14b_benchmark_results", "qwen14b_benchmark_results.json", []),
+    ("established_benchmark_results", "established_benchmark_results.json", {}),
+    ("cxl_capacity_sweep", "cxl_capacity_sweep_results.json", []),
+    ("cxl_emulation_ablation", "cxl_emulation_ablation_results.json", {}),
+]
+
+
 def load_historical_results() -> Dict[str, Any]:
     """Read pre-computed live hardware benchmark and stress test files."""
-    live_path = os.path.join(REPO_ROOT, "results", "live_benchmark_results.json")
-    stress_path = os.path.join(REPO_ROOT, "results", "stress_test_report.json")
-    benchmark_path = os.path.join(REPO_ROOT, "results", "benchmark_results.json")
-
-    results: Dict[str, Any] = {
-        "live_benchmarks": [],
-        "stress_test": {},
-        "pipeline_benchmarks": {},
-    }
-
-    if os.path.exists(live_path):
-        try:
-            with open(live_path, "r", encoding="utf-8") as f:
-                results["live_benchmarks"] = json.load(f)
-        except Exception as e:
-            print(f"[Server] Warning reading {live_path}: {e}")
-
-    if os.path.exists(stress_path):
-        try:
-            with open(stress_path, "r", encoding="utf-8") as f:
-                results["stress_test"] = json.load(f)
-        except Exception as e:
-            print(f"[Server] Warning reading {stress_path}: {e}")
-
-    if os.path.exists(benchmark_path):
-        try:
-            with open(benchmark_path, "r", encoding="utf-8") as f:
-                results["pipeline_benchmarks"] = json.load(f)
-        except Exception as e:
-            print(f"[Server] Warning reading {benchmark_path}: {e}")
+    results: Dict[str, Any] = {}
+    for key, filename, default in _HISTORICAL_FILES:
+        results[key] = default
+        path = os.path.join(REPO_ROOT, "results", filename)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    results[key] = json.load(f)
+            except Exception as e:
+                print(f"[Server] Warning reading {path}: {e}")
 
     # scripts/run_scenarios.py writes one JSON file per scenario (s1, s2, ...)
     # into results/scenarios/ — surface all of them keyed by scenario id so
     # the frontend can render whichever ones have been run without the
-    # server needing to know the scenario list in advance.
+    # server needing to know the scenario list in advance. Only *.json:
+    # the same directory also holds non-JSON trace exports (s3_trace.csv,
+    # s3_trace.dramsim3, s3_trace_gem5.txt) that aren't meant for this API.
     scenarios_dir = os.path.join(REPO_ROOT, "results", "scenarios")
     scenarios: Dict[str, Any] = {}
     if os.path.isdir(scenarios_dir):
@@ -367,19 +383,30 @@ def run_single_inference(
         }
 
 
+FRONTEND_DIST = os.path.join(REPO_ROOT, "frontend", "dist")
+
+
 class MemTierRequestHandler(SimpleHTTPRequestHandler):
     """Custom HTTP Handler serving API endpoints and static frontend assets."""
 
     def __init__(self, *args, **kwargs):
-        presentation_dir = os.path.join(REPO_ROOT, "presentation")
-        super().__init__(*args, directory=presentation_dir, **kwargs)
+        super().__init__(*args, directory=FRONTEND_DIST, **kwargs)
 
     def end_headers(self):
-        # Allow cross-origin requests and disable aggressive browser caching for dev
+        # Allow cross-origin requests.
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        # Vite content-hashes filenames under /assets/ (e.g. index-Ch6tu0ye.js),
+        # so those can be cached indefinitely — a given hash never changes
+        # content, and a rebuild produces a new hash. Blanket no-store here
+        # meant the whole 3D bundle re-downloaded on every reload. Everything
+        # else (index.html, API responses) keeps the old no-cache behavior
+        # since it can legitimately change between requests.
+        if self.path.startswith("/assets/"):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -539,6 +566,14 @@ def main():
             sys.stdout.reconfigure(encoding="utf-8")
         except Exception:
             pass
+
+    if not os.path.exists(os.path.join(FRONTEND_DIST, "index.html")):
+        print("=" * 80)
+        print(f"[Server] ERROR: no build found at {FRONTEND_DIST}")
+        print("[Server] Run this first:")
+        print("[Server]     cd frontend && npm install && npm run build")
+        print("=" * 80)
+        sys.exit(1)
 
     server_address = (args.host, args.port)
     httpd = ThreadingHTTPServer(server_address, MemTierRequestHandler)

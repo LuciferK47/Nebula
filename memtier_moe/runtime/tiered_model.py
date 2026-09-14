@@ -174,7 +174,13 @@ class TieredMoEBlock(nn.Module):
                     GLOBAL_TRACE_EXPORTER.record(
                         tier=MemoryTier.DRAM,
                         size_bytes=act_bytes,
-                        access_type="TRANSFER",
+                        # DRAMSim3/gem5 trace formats only define READ/WRITE
+                        # (see trace_exporter.py); "TRANSFER" is neither and
+                        # made 23.6% of an exported trace unparseable by
+                        # either tool. This is the activation DMA'd into
+                        # DRAM for CPU-side compute — a write at the
+                        # destination tier.
+                        access_type="WRITE",
                         expert_id=(self.layer_idx, exp_idx),
                         tag="dram_hybrid_act",
                     )
@@ -432,6 +438,22 @@ class TieredMoEWrapper:
             if moe_block is None:
                 continue
 
+            # Self-heal a model left mid-patched by a previous wrapper that
+            # crashed before calling unpatch() (e.g. an OOM during a
+            # generate() call). Without this, moe_block has no `.experts`
+            # attribute below, every layer is silently skipped, and this
+            # wrapper ends up controlling nothing while generation keeps
+            # running on the *previous* wrapper's now-orphaned engine and
+            # pools — see tests/test_patch_lifecycle.py.
+            if isinstance(moe_block, TieredMoEBlock):
+                logger.warning(
+                    f"TieredMoEWrapper: layer {l_idx} was still patched from a previous "
+                    f"wrapper that never called unpatch() (likely crashed mid-generation). "
+                    f"Unwrapping to the original block before re-patching."
+                )
+                moe_block = moe_block.original_block
+                setattr(layer, attr_name, moe_block)
+
             expert_modules_list = []
             if hasattr(moe_block, "experts"):
                 if isinstance(moe_block.experts, (nn.ModuleList, list)):
@@ -460,6 +482,20 @@ class TieredMoEWrapper:
                 expert_module = expert_modules_list[exp_idx]
                 expert_size = _tensor_size_bytes(expert_module)
                 all_discovered.append((eid, expert_module, expert_size))
+
+        if not layer_meta:
+            # Every layer was skipped: either this model has no MoE layers
+            # the scanner recognizes, or (see the self-heal branch above)
+            # something upstream left the model in an unexpected state that
+            # unwrapping didn't fix. Either way, a wrapper controlling zero
+            # layers is never correct — silently returning one lets the
+            # caller believe tiering is active while generation runs
+            # unmodified, which is worse than failing here.
+            raise ValueError(
+                f"TieredMoEWrapper: found no MoE layers to patch in {type(self.model)}. "
+                f"Expected each transformer layer's `block_sparse_moe` or `mlp` attribute "
+                f"to expose an `.experts` ModuleList or batched expert tensor."
+            )
 
         # 3. Frequency-Aware Profile-Guided Hot-Expert Placement (SOTA):
         # Determine popularity ranking across all layers
@@ -553,7 +589,20 @@ class TieredMoEWrapper:
             return self.model.generate(*args, **kwargs)
 
     def unpatch(self) -> None:
-        """Restore original MoE blocks back to the base model."""
+        """Restore original MoE blocks back to the base model and release
+        the tier pools this wrapper allocated.
+
+        Beyond restoring layer.mlp/block_sparse_moe, this evicts every
+        expert this wrapper ever stored in HBM/DRAM/CXL — including any
+        SingleMixtralExpert clones made while patching a batched-tensor
+        MoE format — rather than leaving them reachable via
+        self.engine.tier_manager for as long as the wrapper object
+        happens to survive. A real ~624 MB / 5-cycle VRAM growth was
+        observed on GPU (results/scenarios/s10.json's e10 case); this
+        addresses it by construction (nothing left referenced) rather
+        than by having isolated one confirmed root cause, since that
+        needs re-measuring on real hardware to confirm.
+        """
         device = next(self.model.parameters()).device if list(self.model.parameters()) else torch.device("cpu")
         layers = None
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
@@ -570,7 +619,16 @@ class TieredMoEWrapper:
                     if orig is not None:
                         orig.to(device)
                     setattr(layer, attr_name, orig)
-        logger.info("TieredMoEWrapper: unpatched all layers, original blocks restored.")
+
+        for tier in (MemoryTier.HBM, MemoryTier.DRAM, MemoryTier.CXL):
+            pool = self.engine.tier_manager.get_pool(tier)
+            for eid in list(pool.experts):
+                pool.evict(eid)
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        logger.info("TieredMoEWrapper: unpatched all layers, original blocks restored, tier pools released.")
 
     def report(self) -> Dict[str, Any]:
         """Return runtime memory and cache metrics."""

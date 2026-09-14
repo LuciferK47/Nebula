@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Set, Tuple, Any
 
 from memtier_moe.core.types import ExpertId, MemoryTier
 from memtier_moe.core.config import MemTierConfig
@@ -86,6 +86,21 @@ class LFUExpertCache:
     def lookup(self, expert_ids: List[ExpertId]) -> Tuple[List[ExpertId], List[ExpertId]]:
         """Check which experts are in the cache.
 
+        Deliberately does NOT record hit/miss metrics itself. Both callers
+        (runtime/engine.py and runtime/tiered_model.py's weight_transfer
+        branch) always follow this with a per-expert tier-specific call —
+        record_hbm_hit() for each hit, record_dram_hit()/record_cxl_hit()/
+        record_disk_fault() for each miss — which is where the tier
+        breakdown actually comes from (a miss here doesn't yet know which
+        tier it will resolve to). This method used to *also* call
+        record_hit()/record_miss() directly, which double-counted every
+        lookup: cache_hits/cache_misses ended up 2x the real total (2494
+        vs the 1247 actual lookups for one S2 run), and because only the
+        HBM side was doubled symmetrically, hbm_hit_rate stayed correct
+        by accident while dram_hit_rate/cxl_hit_rate came out understated
+        by exactly 2x. See tests/test_lfu_cache.py::test_lookup_does_not_
+        double_count_with_caller_tier_recording.
+
         Args:
             expert_ids: List of requested expert IDs.
 
@@ -97,10 +112,8 @@ class LFUExpertCache:
         for eid in expert_ids:
             if eid in self._cache:
                 hits.append(eid)
-                self.metrics.record_hit()
             else:
                 misses.append(eid)
-                self.metrics.record_miss()
         return hits, misses
 
     def get_weights(self, expert_id: ExpertId) -> Any:
@@ -142,6 +155,28 @@ class LFUExpertCache:
             if self._hbm_pool.available_for(incoming_size):
                 break
 
+        if not self._hbm_pool.available_for(incoming_size):
+            # Every non-pinned resident was evicted and there is still not
+            # enough room. This happens when a caller's pinned set (e.g. a
+            # layer's whole top-k active set, which must all be resident
+            # simultaneously to compute that layer) is larger than the HBM
+            # budget. Silently returning here — the old behavior — lets the
+            # subsequent store() raise a generic "out of memory" error two
+            # frames away with no indication of *why*; raise here instead,
+            # with the numbers that actually explain it.
+            pinned_bytes = sum(
+                self.tier_manager.get_metadata(eid).size_bytes for eid in pinned_set
+            )
+            raise RuntimeError(
+                f"Cannot make room for {incoming_size / 1e6:.1f} MB in HBM: "
+                f"{len(pinned_set)} pinned expert(s) already need {pinned_bytes / 1e6:.1f} MB "
+                f"against an HBM budget of {self._hbm_pool.capacity_bytes / 1e6:.1f} MB, "
+                f"leaving no non-pinned resident to evict. A pinned set (e.g. one layer's "
+                f"full top-k active set) must fit entirely in HBM at once — raise "
+                f"hbm_cache_budget_bytes, or use execution_mode='hybrid' so cold experts "
+                f"execute in place instead of being pinned."
+            )
+
         return evicted
 
     def ensure_resident(
@@ -162,7 +197,11 @@ class LFUExpertCache:
         self.make_room(meta.size_bytes, pinned=pinned_set)
 
         if transfer_engine.is_inflight(expert_id):
-            transfer_engine.wait_for(expert_id)
+            # Pass the same pinned set used above: if this in-flight
+            # transfer's completion needs to evict to make room, it must
+            # not evict a same-layer sibling this caller is relying on
+            # staying resident.
+            transfer_engine.wait_for(expert_id, pinned=pinned_set)
         else:
             transfer_engine.demand_fetch(expert_id)
 

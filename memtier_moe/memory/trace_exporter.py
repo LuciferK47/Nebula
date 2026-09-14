@@ -82,6 +82,19 @@ class TraceExporter:
         if len(self._records) >= self.max_records:
             return  # bounded memory protection
 
+        # export_dramsim3()/export_gem5() write access_type verbatim into
+        # trace formats that only define READ/WRITE — anything else silently
+        # produces a file neither tool can parse (this caught a real bug:
+        # tiered_model.py's hybrid-mode activation offload was tagging
+        # "TRANSFER", corrupting 23.6% of an exported trace).
+        normalized = access_type.upper()
+        if normalized not in ("READ", "WRITE"):
+            raise ValueError(
+                f"trace_exporter.record() got access_type={access_type!r}, but exported "
+                f"DRAMSim3/gem5 trace formats only define READ or WRITE. Map the caller's "
+                f"event to whichever one matches its direction at the destination tier."
+            )
+
         now_ns = time.perf_counter_ns() - self._start_time_ns
 
         # Synthesize realistic deterministic memory map address if not explicitly passed

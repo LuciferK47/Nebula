@@ -13,6 +13,22 @@ def test_trace_exporter_disabled_by_default():
     assert exporter.transaction_count == 0
 
 
+def test_trace_exporter_rejects_opcodes_the_export_formats_cant_parse():
+    """DRAMSim3/gem5 trace formats only define READ/WRITE. A caller passing
+    anything else (e.g. the old "TRANSFER" tag tiered_model.py used for
+    hybrid-mode activation offload) used to be written through verbatim,
+    silently producing an unparseable file — this caught 23.6% of one real
+    exported trace. Case-normalized "read"/"write" must still pass."""
+    exporter = TraceExporter(enabled=True)
+    with pytest.raises(ValueError, match="READ or WRITE"):
+        exporter.record(tier=MemoryTier.DRAM, size_bytes=4096, access_type="TRANSFER")
+    assert exporter.transaction_count == 0
+
+    exporter.record(tier=MemoryTier.DRAM, size_bytes=4096, access_type="read")
+    exporter.record(tier=MemoryTier.DRAM, size_bytes=4096, access_type="write")
+    assert exporter.transaction_count == 2
+
+
 def test_trace_exporter_record():
     exporter = TraceExporter(enabled=True)
     exporter.record(

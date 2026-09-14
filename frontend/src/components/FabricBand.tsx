@@ -1,25 +1,29 @@
-import React from 'react';
 import { Kicker } from './Kicker';
 
-const MODULE_MACRO = "/4a83aaee-a8ea-4334-8a53-9830839fd6f9.jpg";
-
-
 /** The deliberate switch from the warm-cream narrative half into the
- *  near-black technical half. Photography, not illustration. */
+ *  near-black technical half. Used to be a stock macro photo of PCB gold
+ *  contacts — replaced with the same hairline-grid language the rest of
+ *  the site's diagrams use, since a stock photo of an unrelated board
+ *  wasn't a real representation of anything this project built. */
 export function FabricBand() {
   return (
-    <section aria-label="The fabric" className="relative bg-ink">
-      <img
-        src={MODULE_MACRO}
-        alt="Macro photograph of an accelerator module's gold edge contacts and memory packages, lit in cool blue and violet light."
-        className="h-56 w-full object-cover md:h-72"
-        loading="lazy" />
-      
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between px-5 pb-5 md:px-8 md:pb-7">
-        <Kicker className="text-cream/75">
-          The weights have to live somewhere. The fabric decides how fast they arrive.
+    <section aria-label="Section divider" className="relative flex h-40 items-end overflow-hidden bg-ink md:h-48">
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.14]"
+        aria-hidden="true">
+
+        <defs>
+          <pattern id="fabric-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+            <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#f4f3ed" strokeWidth={0.75} />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#fabric-grid)" />
+      </svg>
+      <div className="pointer-events-none relative flex w-full items-end justify-between px-5 pb-5 md:px-8 md:pb-7">
+        <Kicker className="max-w-[38ch] text-cream/75">
+          The weights have to live somewhere. This is how the fabric decides how fast they arrive.
         </Kicker>
-        <Kicker className="hidden text-cream/40 md:block">fig. 02 — cxl 3.1 link</Kicker>
+        <Kicker className="hidden text-cream/40 md:block">fig. 02 — the boundary</Kicker>
       </div>
     </section>);
 

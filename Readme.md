@@ -159,6 +159,17 @@ The live inference engine was evaluated on physical hardware using an entry-leve
 
 ### Measured Hardware Results
 
+> [!WARNING]
+> **Superseded by `results/scenarios/s2.json`.** The table below and the newer scenario-suite run
+> (`scripts/run_scenarios.py --scenario s2`, see [GPU_RUNBOOK.md](GPU_RUNBOOK.md)) report different
+> numbers for the same comparison — hybrid @ 600 MB vs. two-tier @ 600 MB is **1.78×** here but **2.76×**
+> in `s2.json` — because they were run against different builds of the expert set (1,276.8 MB of active
+> expert weights here vs. 96 × 17.3 MB = 1,660.8 MB in the scenario suite; this section also names the
+> model three different ways across its own text). Treat `results/scenarios/*.json` as canonical going
+> forward — it comes from the actively maintained harness with a fixed model identity per run
+> (`scripts/build_chat_moe.py`) — and this table as a preserved historical run rather than the current
+> headline number. Do not quote both ratios together.
+
 The following table documents real end-to-end token generation benchmarks **physically measured** on the NVIDIA RTX 4050 Laptop GPU (25 generated tokens per run):
 
 | Configuration | VRAM Budget | Execution Mode | Measured Hit Rate | Evictions | Calculated Data Movement (MB) | Measured Throughput (tok/s) | Relative Performance |
@@ -391,10 +402,8 @@ Nebula/
 │       ├── engine.py           # InferenceEngine coordinating cache, prefetch, & tiers
 │       ├── router_interceptor.py# Routing decision recorder & gate interceptor
 │       └── tiered_model.py     # TieredMoEWrapper & TieredMoEBlock PyTorch modules
-├── presentation/               # Interactive web presentation studio
-│   ├── app.js                  # Frontend telemetry & real-time controls
-│   ├── index.html              # Dark-mode dashboard
-│   └── styles.css              # Styling & layout
+├── frontend/                    # React + Vite site (charts, 3D memory-tier explorer, live prompt studio)
+│   └── dist/                    # `npm run build` output — served by scripts/serve.py
 ├── results/                    # Generated plots, traces & benchmark JSON outputs
 ├── scripts/                    # Command-line entry points
 │   ├── generate_roofline_analysis.py # Generate interactive Plotly roofline dashboard
@@ -402,7 +411,7 @@ Nebula/
 │   ├── run_benchmarks.py       # Execute 16-run ablation matrix & plot figures
 │   ├── run_live_benchmark.py   # Execute live physical benchmark on RTX 4050
 │   ├── run_live_inference.py   # Live model inference with text streaming
-│   ├── serve.py                # Presentation server daemon
+│   ├── serve.py                # API + static server (serves frontend/dist)
 │   └── verify_overlap.py       # Benchmark compute/transfer DMA overlap
 ├── tests/                      # Pytest test suite (94 tests)
 │   ├── test_benchmark_methodology.py # Benchmark metrics honesty & separation tests

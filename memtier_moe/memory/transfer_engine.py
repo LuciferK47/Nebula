@@ -111,13 +111,14 @@ class TransferEngine:
         tier_manager: TierManager,
         config: MemTierConfig,
         metrics: MetricsTracker,
-        ensure_room_fn: Optional[Callable[[int], List[ExpertId]]] = None,
+        ensure_room_fn: Optional[Callable[[int, Optional[Set[ExpertId]]], List[ExpertId]]] = None,
     ):
         """
         Args:
             ensure_room_fn: Optional callback, typically
                 ``LFUExpertCache.make_room``, invoked with the incoming
-                expert's size right before it's stored into HBM in
+                expert's size (and the caller-supplied pinned set, if any —
+                see ``wait_for``) right before it's stored into HBM in
                 ``wait_for``. An async transfer can reserve HBM space at
                 issue time (the prefetch scheduler does), but completion
                 happens later in the background — an intervening
@@ -280,8 +281,19 @@ class TransferEngine:
         )
         return handle
 
-    def wait_for(self, expert_id: ExpertId) -> Optional[Any]:
-        """Block until the async transfer for *expert_id* completes."""
+    def wait_for(self, expert_id: ExpertId, pinned: Optional[Set[ExpertId]] = None) -> Optional[Any]:
+        """Block until the async transfer for *expert_id* completes.
+
+        Args:
+            pinned: Forwarded to ``ensure_room_fn`` (typically
+                ``LFUExpertCache.make_room``) so a completing async
+                transfer's own room-check can't evict an expert the
+                caller is relying on staying resident — e.g. another
+                member of the same layer's top-k active set. Previously
+                dropped entirely, so a completion racing with an
+                ensure_resident() call for a same-layer sibling could
+                evict it regardless of pinning.
+        """
         if expert_id not in self._inflight:
             if expert_id in self._completed:
                 self._completed.discard(expert_id)
@@ -303,7 +315,7 @@ class TransferEngine:
 
         metadata = self.tier_manager.get_metadata(expert_id)
         if self._ensure_room_fn is not None:
-            self._ensure_room_fn(metadata.size_bytes)
+            self._ensure_room_fn(metadata.size_bytes, pinned)
 
         hbm_pool = self.tier_manager.get_pool(MemoryTier.HBM)
         hbm_pool.store(expert_id, tensor)

@@ -1,8 +1,8 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { CheckIcon } from 'lucide-react';
 import { Kicker } from './Kicker';
 import { WobbleRule } from './WobbleRule';
+import { ProvenanceBadge } from './Provenance';
 import { guarantees } from '../data/guarantees';
 import { fadeUp, inView, stagger } from '../utils/motion';
 
@@ -13,17 +13,17 @@ export function Solved() {
         <div className="grid gap-12 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:gap-16">
           <div>
             <Kicker as="p" className="text-ink/45">
-              01 — Hard guarantees
+              01 — What&rsquo;s real
             </Kicker>
             <h2
               id="solved-title"
               className="mt-5 font-display text-[clamp(2.75rem,5vw,4.5rem)] leading-[0.92] text-ink">
-              
-              Solved.
+
+              Measured, not claimed.
             </h2>
             <p className="mt-6 max-w-[34ch] font-mono text-[0.78rem] leading-relaxed text-ink/60">
-              Offload schemes usually buy throughput with accuracy, or with a tail latency nobody
-              looks at. These four are not negotiable.
+              Every line below traces to a real run — including the two bugs an edge-case suite
+              found and the negative result that made the cut.
             </p>
           </div>
 
@@ -45,9 +45,12 @@ export function Solved() {
                   aria-hidden="true" />
                 
                   <div>
-                    <h3 className="font-display text-2xl leading-snug text-ink md:text-[1.75rem]">
-                      {item.title}
-                    </h3>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h3 className="font-display text-2xl leading-snug text-ink md:text-[1.75rem]">
+                        {item.title}
+                      </h3>
+                      <ProvenanceBadge value={item.provenance} />
+                    </div>
                     <p className="mt-2 max-w-[58ch] font-mono text-[0.78rem] leading-relaxed text-ink/65">
                       {item.detail}
                     </p>

@@ -28,7 +28,7 @@ export default {
         ambient: '#7c6bd6',
       },
       fontFamily: {
-        display: ['"Bodoni Moda"', 'Didot', 'Georgia', 'serif'],
+        display: ['"Playfair Display"', 'Georgia', 'serif'],
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       fontSize: {

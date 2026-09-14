@@ -72,6 +72,59 @@ def test_eviction_frees_enough_space():
     assert victims2 == [(0, 0), (0, 1)]
 
 
+def test_lookup_does_not_double_count_with_caller_tier_recording():
+    """lookup() must not record hit/miss metrics itself.
+
+    Both real callers (runtime/engine.py and the weight_transfer branch of
+    runtime/tiered_model.py) always follow lookup() with a per-expert
+    tier-specific record_*() call, because a miss doesn't know which tier
+    it will resolve to until the caller checks. lookup() used to *also*
+    call record_hit()/record_miss() directly, silently doubling
+    cache_hits/cache_misses relative to the real number of lookups (2494
+    vs 1247 actual in one committed S2 scenario run) and, because only the
+    HBM side happened to be doubled symmetrically, understating
+    dram_hit_rate/cxl_hit_rate by exactly 2x without touching hit_rate at
+    all — the kind of bug that hides in a metric nobody happens to chart.
+    """
+    from memtier_moe.cache.lfu_cache import LFUExpertCache, CachedExpert
+
+    class MinimalTM:
+        def __init__(self):
+            self.metadata = {}
+        def get_metadata(self, eid):
+            return self.metadata[eid]
+        def get_pool(self, tier):
+            raise NotImplementedError
+
+    tm = MinimalTM()
+    tm.metadata[(0, 0)] = ExpertMetadata((0, 0), size_bytes=100)  # will be a "hit"
+    tm.metadata[(0, 1)] = ExpertMetadata((0, 1), size_bytes=100)  # will be a "miss"
+
+    config = MemTierConfig(hbm_cache_budget_bytes=10000)
+    metrics = MetricsTracker()
+    cache = LFUExpertCache(tm, config, metrics)
+    # Make (0, 0) resident without the full transfer machinery insert() needs.
+    cache._cache[(0, 0)] = CachedExpert(expert_id=(0, 0), metadata=tm.metadata[(0, 0)], last_used_token=0)
+
+    hits, misses = cache.lookup([(0, 0), (0, 1)])
+    assert hits == [(0, 0)] and misses == [(0, 1)]
+
+    # lookup() alone must be metrics-neutral.
+    assert metrics.counters["cache_hits"] == 0
+    assert metrics.counters["cache_misses"] == 0
+
+    # Now perform exactly what both real call sites do: one tier-specific
+    # record per hit and per miss.
+    for eid in hits:
+        metrics.record_hbm_hit()
+    for eid in misses:
+        metrics.record_dram_hit()
+
+    assert metrics.counters["cache_hits"] + metrics.counters["cache_misses"] == 2
+    assert metrics.counters["hbm_hits"] == 1
+    assert metrics.counters["dram_hits"] == 1
+
+
 def test_warm_start_preserves_frequencies():
     """warm_start should set decayed_frequency on metadata."""
     from memtier_moe.cache.lfu_cache import LFUExpertCache

@@ -165,7 +165,13 @@ def test_single_expert_larger_than_every_tier_fails_fast_not_hanging():
     """A single expert bigger than every tier cannot physically be placed,
     so a clean RuntimeError is the correct outcome. What matters is that
     it terminates promptly rather than wedging in a promote/demote loop —
-    which is what `engine.run_token` returning or raising both prove."""
+    which is what `engine.run_token` returning or raising both prove.
+
+    make_room() now raises its own actionable error (naming the pinned
+    bytes vs. HBM capacity) before the generic "out of memory" from
+    HBMPool.store() is ever reached — accept either, since both are the
+    same underlying failure and the more specific one is strictly better.
+    """
     sizes = {(0, 0): 10_000}
     config = MemTierConfig(
         hbm_cache_budget_bytes=1000, host_dram_bytes=1000, cxl_memory_bytes=1000,
@@ -175,4 +181,5 @@ def test_single_expert_larger_than_every_tier_fails_fast_not_hanging():
     try:
         engine.run_token(0, [[0]])
     except RuntimeError as e:
-        assert "out of memory" in str(e).lower(), f"unexpected failure mode: {e}"
+        msg = str(e).lower()
+        assert "out of memory" in msg or "cannot make room" in msg, f"unexpected failure mode: {e}"

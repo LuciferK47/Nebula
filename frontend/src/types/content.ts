@@ -1,4 +1,10 @@
-export type TierId = 'hot' | 'warm' | 'cold';
+export type TierId = 'hbm' | 'dram' | 'cxl';
+
+/** How a number on this page was produced — surfaced as a visible badge
+ * everywhere a metric is shown, per the project's own methodology notes
+ * (Nebula/GPU_RUNBOOK.md): a measured wall-clock number must never share
+ * an axis or a claim with a modeled/analytical one. */
+export type Provenance = 'measured' | 'modeled';
 
 export interface Tier {
   id: TierId;
@@ -6,26 +12,16 @@ export interface Tier {
   name: string;
   medium: string;
   capacity: string;
-  fetch: string;
-  residency: string;
+  bandwidth: string;
+  latency: string;
+  provenance: Provenance;
   note: string;
 }
 
 export interface Guarantee {
   title: string;
   detail: string;
-}
-
-export interface BenchStat {
-  value: string;
-  label: string;
-  baseline: string;
-}
-
-export interface BenchBar {
-  name: string;
-  tokensPerSecond: number;
-  isSubject?: boolean;
+  provenance: Provenance;
 }
 
 export interface Mechanism {
@@ -38,19 +34,4 @@ export interface PackageCard {
   name: string;
   command: string;
   blurb: string;
-}
-
-export interface FieldNote {
-  quote: string;
-  author: string;
-  role: string;
-  context: string;
-}
-
-export interface Persona {
-  audience: string;
-  headline: string;
-  body: string;
-  bullets: string[];
-  cta: string;
 }

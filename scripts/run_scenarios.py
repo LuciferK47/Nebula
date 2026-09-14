@@ -36,6 +36,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
+import statistics
 import sys
 import time
 from typing import Any, Dict, List, Optional
@@ -53,7 +55,6 @@ from scripts.run_live_benchmark import load_or_calibrate_co_occurrence
 
 RESULTS_DIR = os.path.join(REPO_ROOT, "results", "scenarios")
 LOCAL_CHAT_MOE = os.path.join(REPO_ROOT, "models", "Qwen1.5-4x0.5B-Chat-MoE")
-DEFAULT_MODEL_ID = LOCAL_CHAT_MOE if os.path.exists(LOCAL_CHAT_MOE) else "Qwen/Qwen1.5-MoE-A2.7B"
 DEFAULT_TRACE = os.path.join(REPO_ROOT, "traces", "routing_trace_wikitext.npz")
 DEFAULT_PROMPT = "Explain the fundamental principles of hierarchical memory tiering in high-performance computing."
 
@@ -130,68 +131,132 @@ def run_generation(
         expert_frequency=freq_map,
     )
 
-    if isinstance(prompt, list):
-        inputs = tokenizer(prompt, padding=True, return_tensors="pt")
-    else:
-        inputs = tokenizer(prompt, return_tensors="pt")
-    if torch.cuda.is_available():
-        inputs = {k: v.cuda() for k, v in inputs.items()}
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.synchronize()
+    try:
+        if isinstance(prompt, list):
+            inputs = tokenizer(prompt, padding=True, return_tensors="pt")
+        else:
+            inputs = tokenizer(prompt, return_tensors="pt")
+        if torch.cuda.is_available():
+            inputs = {k: v.cuda() for k, v in inputs.items()}
+            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.synchronize()
 
-    t0 = time.perf_counter()
-    with torch.no_grad():
-        output_ids = wrapper.generate(
-            **inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, repetition_penalty=1.15,
-        )
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    wall_time = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        with torch.no_grad():
+            output_ids = wrapper.generate(
+                **inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, repetition_penalty=1.15,
+            )
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        wall_time = time.perf_counter() - t0
 
-    batch_size = inputs["input_ids"].shape[0]
-    gen_tokens_per_seq = output_ids.shape[1] - inputs["input_ids"].shape[1]
-    total_gen_tokens = gen_tokens_per_seq * batch_size
-    tok_per_sec = total_gen_tokens / wall_time if wall_time > 0 else 0.0
+        batch_size = inputs["input_ids"].shape[0]
+        gen_tokens_per_seq = output_ids.shape[1] - inputs["input_ids"].shape[1]
+        total_gen_tokens = gen_tokens_per_seq * batch_size
+        tok_per_sec = total_gen_tokens / wall_time if wall_time > 0 else 0.0
 
-    report = wrapper.report()
-    m = report["metrics"]
-    sched = report.get("scheduler_stats", {})
-    peak_vram_mb = torch.cuda.max_memory_allocated() / 1e6 if torch.cuda.is_available() else 0.0
+        report = wrapper.report()
+        m = report["metrics"]
+        sched = report.get("scheduler_stats", {})
+        peak_vram_mb = torch.cuda.max_memory_allocated() / 1e6 if torch.cuda.is_available() else 0.0
 
-    result = {
-        "hbm_budget_mb": hbm_mb,
-        "dram_budget_mb": dram_mb,
-        "cxl_budget_mb": cxl_mb,
-        "execution_mode": execution_mode,
-        "enable_prefetch": enable_prefetch,
-        "enable_lookahead": enable_lookahead,
-        "cxl_bandwidth_gbps": cxl_bandwidth_gbps,
-        "cxl_emulation_mode": cxl_emulation_mode,
-        "batch_size": batch_size,
-        "generated_tokens_per_seq": int(gen_tokens_per_seq),
-        "total_generated_tokens": int(total_gen_tokens),
-        "wall_time_seconds": round(wall_time, 4),
-        "tokens_per_second": round(tok_per_sec, 2),
-        "hit_rate": round(m.get("hit_rate", 0.0), 4),
-        "hbm_hit_rate": round(m.get("hbm_hit_rate", 0.0), 4),
-        "dram_hit_rate": round(m.get("dram_hit_rate", 0.0), 4),
-        "cxl_hit_rate": round(m.get("cxl_hit_rate", 0.0), 4),
-        "cache_hits": m.get("cache_hits", 0),
-        "cache_misses": m.get("cache_misses", 0),
-        "evictions": m.get("evictions", 0),
-        "transfer_mb": round(m.get("total_transfer_bytes", 0) / 1e6, 3),
-        "prefetch_precision": round(sched.get("prefetch_precision", 0.0), 4) if enable_prefetch or enable_lookahead else 0.0,
-        "peak_vram_mb": round(peak_vram_mb, 1),
-        # Fidelity badges: this whole path is a real HF model on real
-        # hardware — compute and DRAM<->HBM transfers are measured;
-        # only the CXL tier's timing (never its placement) is modeled.
-        "benchmark_mode": "live",
-        "computation_type": "measured",
-        "transfer_latency_type": "measured+modeled_cxl",
-    }
+        result = {
+            "hbm_budget_mb": hbm_mb,
+            "dram_budget_mb": dram_mb,
+            "cxl_budget_mb": cxl_mb,
+            "execution_mode": execution_mode,
+            "enable_prefetch": enable_prefetch,
+            "enable_lookahead": enable_lookahead,
+            "cxl_bandwidth_gbps": cxl_bandwidth_gbps,
+            "cxl_emulation_mode": cxl_emulation_mode,
+            "batch_size": batch_size,
+            "generated_tokens_per_seq": int(gen_tokens_per_seq),
+            "total_generated_tokens": int(total_gen_tokens),
+            "wall_time_seconds": round(wall_time, 4),
+            "tokens_per_second": round(tok_per_sec, 2),
+            "hit_rate": round(m.get("hit_rate", 0.0), 4),
+            "hbm_hit_rate": round(m.get("hbm_hit_rate", 0.0), 4),
+            "dram_hit_rate": round(m.get("dram_hit_rate", 0.0), 4),
+            "cxl_hit_rate": round(m.get("cxl_hit_rate", 0.0), 4),
+            "cache_hits": m.get("cache_hits", 0),
+            "cache_misses": m.get("cache_misses", 0),
+            "evictions": m.get("evictions", 0),
+            "transfer_mb": round(m.get("total_transfer_bytes", 0) / 1e6, 3),
+            "prefetch_precision": round(sched.get("prefetch_precision", 0.0), 4) if enable_prefetch or enable_lookahead else 0.0,
+            "peak_vram_mb": round(peak_vram_mb, 1),
+            # Fidelity badges: this whole path is a real HF model on real
+            # hardware — compute and DRAM<->HBM transfers are measured;
+            # only the CXL tier's timing (never its placement) is modeled.
+            "benchmark_mode": "live",
+            "computation_type": "measured",
+            "transfer_latency_type": "measured+modeled_cxl",
+        }
+        return result
+    finally:
+        # Always unpatch, including on the exception path. Without this, a
+        # single failed run (e.g. a budget too small to hold the pinned
+        # top-k active set) leaves every transformer layer wearing a dead
+        # TieredMoEBlock tied to this run's now-discarded engine and pools.
+        # _patch_moe_layers() detects and self-heals that state (see
+        # tiered_model.py), but every scenario after the failure would
+        # otherwise silently report results from the wrong configuration.
+        wrapper.unpatch()
 
-    wrapper.unpatch()
-    return result
+
+def run_repeated_randomized(
+    resources, run_specs: List[Dict[str, Any]], tokens: int, repeats: int = 3, seed: int = 0,
+) -> List[Dict[str, Any]]:
+    """Execute each entry in run_specs `repeats` times, in one randomized
+    order across the WHOLE sweep (not blocked by config), so GPU thermal
+    state and clock boost drift do not correlate with the variable under
+    test.
+
+    This is not hypothetical: S1 in this exact suite shows throughput
+    peaking at 1500 MB (11.20 tok/s) and then *falling* to 10.36 at
+    2000/2500 MB despite hit_rate reaching 1.0 and transfer reaching
+    0.0 MB — at 100% hit rate with zero transfer, a larger budget cannot
+    legitimately be slower, so the later (hotter, since budgets ran
+    ascending) runs were being penalized. Readme.md already documents
+    fixing an identical confound in the CXL emulation ablation the same
+    way: "randomized, interleaved blocks across 60 runs."
+
+    Returns one aggregated dict per run_specs entry: the representative
+    (first-repeat) fields for everything that should be deterministic
+    given greedy decoding and fixed weights (hit_rate, evictions,
+    transfer_mb, ...), plus mean/std for the two wall-clock-derived
+    fields repeats actually exist to stabilize (tokens_per_second,
+    wall_time_seconds), plus every raw per-repeat result for audit.
+    """
+    tasks = [(i, r) for i in range(len(run_specs)) for r in range(repeats)]
+    rng = random.Random(seed)
+    rng.shuffle(tasks)
+
+    raw: Dict[int, List[Dict[str, Any]]] = {i: [] for i in range(len(run_specs))}
+    for spec_idx, _ in tasks:
+        spec = run_specs[spec_idx]
+        label = spec.get("label", "")
+        done_so_far = len(raw[spec_idx])
+        print(f"    [{done_so_far + 1}/{repeats}] {label} (randomized order)...")
+        kwargs = {k: v for k, v in spec.items() if k != "label"}
+        r = run_generation(*resources, max_new_tokens=tokens, **kwargs)
+        raw[spec_idx].append(r)
+
+    aggregated = []
+    for i, spec in enumerate(run_specs):
+        reps = raw[i]
+        tps = [r["tokens_per_second"] for r in reps]
+        wt = [r["wall_time_seconds"] for r in reps]
+        result = dict(reps[0])
+        result["tokens_per_second"] = round(statistics.mean(tps), 3)
+        result["tokens_per_second_std"] = round(statistics.pstdev(tps), 3) if len(tps) > 1 else 0.0
+        result["wall_time_seconds"] = round(statistics.mean(wt), 4)
+        result["wall_time_seconds_std"] = round(statistics.pstdev(wt), 4) if len(wt) > 1 else 0.0
+        result["num_repeats"] = repeats
+        result["repeats"] = reps
+        if spec.get("label"):
+            result["mode_label"] = spec["label"]
+        aggregated.append(result)
+    return aggregated
 
 
 def _save(scenario_id: str, payload: Dict[str, Any], out_dir: str) -> str:
@@ -208,14 +273,20 @@ def _save(scenario_id: str, payload: Dict[str, Any], out_dir: str) -> str:
 
 def scenario_s1(ctx, out_dir: str) -> Dict[str, Any]:
     budgets = [200, 300, 450, 600, 750, 900, 1200, 1500, 2000, 2500]
-    runs = []
-    for b in budgets:
-        print(f"  [S1] HBM budget {b} MB...")
-        runs.append(run_generation(
-            *ctx.resources, prompt=ctx.prompt, hbm_mb=b, dram_mb=1500, cxl_mb=1500,
-            execution_mode="hybrid", max_new_tokens=ctx.tokens,
-        ))
-    return {"scenario": "s1_capacity_cliff", "description": "HBM budget sweep, hybrid mode: where does tiering stop being free?", "runs": runs}
+    specs = [
+        dict(label=f"{b}MB", prompt=ctx.prompt, hbm_mb=b, dram_mb=1500, cxl_mb=1500, execution_mode="hybrid")
+        for b in budgets
+    ]
+    print("  [S1] running budget sweep x3, randomized order (see run_repeated_randomized docstring)...")
+    runs = run_repeated_randomized(ctx.resources, specs, ctx.tokens, repeats=3)
+    return {
+        "scenario": "s1_capacity_cliff",
+        "description": "HBM budget sweep, hybrid mode: where does tiering stop being free? "
+                        "Each budget is 3 repeats in randomized interleaved order; "
+                        "tokens_per_second/wall_time_seconds are means with a _std sibling, "
+                        "raw per-repeat results are in each run's 'repeats' list.",
+        "runs": runs,
+    }
 
 
 # ── S2: Execution-mode crossover ────────────────────────────────────────
@@ -229,18 +300,28 @@ def scenario_s2(ctx, out_dir: str) -> Dict[str, Any]:
         dict(label="hybrid", execution_mode="hybrid", enable_prefetch=False, enable_lookahead=False),
         dict(label="hybrid+lookahead", execution_mode="hybrid", enable_prefetch=False, enable_lookahead=True),
     ]
-    runs = []
-    for hbm_mb in (600, 900):
-        for m in modes:
-            print(f"  [S2] {hbm_mb}MB / {m['label']}...")
-            r = run_generation(
-                *ctx.resources, prompt=ctx.prompt, hbm_mb=hbm_mb, dram_mb=1500, cxl_mb=1500,
-                execution_mode=m["execution_mode"], enable_prefetch=m["enable_prefetch"],
-                enable_lookahead=m["enable_lookahead"], max_new_tokens=ctx.tokens,
-            )
-            r["mode_label"] = m["label"]
-            runs.append(r)
-    return {"scenario": "s2_execution_mode_crossover", "description": "Ablation of prefetch/lookahead/hybrid at fixed HBM budgets.", "runs": runs}
+    specs = [
+        dict(
+            label=f"{hbm_mb}MB/{m['label']}", prompt=ctx.prompt, hbm_mb=hbm_mb, dram_mb=1500, cxl_mb=1500,
+            execution_mode=m["execution_mode"], enable_prefetch=m["enable_prefetch"], enable_lookahead=m["enable_lookahead"],
+        )
+        for hbm_mb in (600, 900) for m in modes
+    ]
+    print("  [S2] running mode crossover x3, randomized order (see run_repeated_randomized docstring)...")
+    runs = run_repeated_randomized(ctx.resources, specs, ctx.tokens, repeats=3)
+    return {
+        "scenario": "s2_execution_mode_crossover",
+        "description": "Ablation of prefetch/lookahead/hybrid at fixed HBM budgets. Each config is 3 "
+                        "repeats in randomized interleaved order; tokens_per_second/wall_time_seconds "
+                        "are means with a _std sibling, raw per-repeat results are in each run's "
+                        "'repeats' list. NOTE: any s2.json generated before the lfu_cache.py lookup() "
+                        "double-count fix (LFUExpertCache.lookup() used to call record_hit()/"
+                        "record_miss() itself, on top of the caller's own tier-specific recording) has "
+                        "weight_transfer cache_hits/cache_misses at ~2x their true count and "
+                        "dram_hit_rate/cxl_hit_rate understated by ~2x — hit_rate itself was unaffected. "
+                        "Data from this fixed version does not have that discrepancy.",
+        "runs": runs,
+    }
 
 
 # ── S3: CXL sensitivity (the paper-defense scenario) ────────────────────
@@ -265,22 +346,22 @@ def scenario_s3(ctx, out_dir: str) -> Dict[str, Any]:
     GLOBAL_TRACE_EXPORTER.clear()
     GLOBAL_TRACE_EXPORTER.enable()
 
-    runs = []
     default_bw = 8.0
-    for bw in (4.0, 8.0, 16.0, 32.0, 64.0):
-        print(f"  [S3] cxl_bandwidth_gbps={bw}, mode=full...")
-        runs.append(run_generation(
-            *ctx.resources, prompt=ctx.prompt, hbm_mb=600, dram_mb=400, cxl_mb=4000,
-            execution_mode="hybrid", max_new_tokens=ctx.tokens,
-            cxl_bandwidth_gbps=bw, cxl_emulation_mode="full",
-        ))
-    for mode in ("disabled", "latency_only"):
-        print(f"  [S3] cxl_bandwidth_gbps={default_bw}, mode={mode}...")
-        runs.append(run_generation(
-            *ctx.resources, prompt=ctx.prompt, hbm_mb=600, dram_mb=400, cxl_mb=4000,
-            execution_mode="hybrid", max_new_tokens=ctx.tokens,
-            cxl_bandwidth_gbps=default_bw, cxl_emulation_mode=mode,
-        ))
+    specs = [
+        dict(
+            label=f"bw={bw}/full", prompt=ctx.prompt, hbm_mb=600, dram_mb=400, cxl_mb=4000,
+            execution_mode="hybrid", cxl_bandwidth_gbps=bw, cxl_emulation_mode="full",
+        )
+        for bw in (4.0, 8.0, 16.0, 32.0, 64.0)
+    ] + [
+        dict(
+            label=f"bw={default_bw}/{mode}", prompt=ctx.prompt, hbm_mb=600, dram_mb=400, cxl_mb=4000,
+            execution_mode="hybrid", cxl_bandwidth_gbps=default_bw, cxl_emulation_mode=mode,
+        )
+        for mode in ("disabled", "latency_only")
+    ]
+    print("  [S3] running CXL sensitivity sweep x3, randomized order (see run_repeated_randomized docstring)...")
+    runs = run_repeated_randomized(ctx.resources, specs, ctx.tokens, repeats=3)
 
     GLOBAL_TRACE_EXPORTER.stop_tracing()
     dramsim3_path = os.path.join(out_dir, "s3_trace.dramsim3")
@@ -295,9 +376,12 @@ def scenario_s3(ctx, out_dir: str) -> Dict[str, Any]:
     placement_stable = len(set(round(v, 6) for v in hit_rates.values())) == 1
     return {
         "scenario": "s3_cxl_sensitivity",
-        "description": "cxl_bandwidth_gbps x cxl_emulation_mode sweep. hit_rate must stay constant across all "
-                        "runs (emulation affects timing only, never placement) — see test_emulation_mode_parity.py "
-                        "for the pinned CPU-only version of this same contract.",
+        "description": "cxl_bandwidth_gbps x cxl_emulation_mode sweep, 3 repeats each in randomized "
+                        "interleaved order. hit_rate must stay constant across all runs (emulation "
+                        "affects timing only, never placement) — see test_emulation_mode_parity.py for "
+                        "the pinned CPU-only version of this same contract. tokens_per_second is a mean "
+                        "across repeats with a _std sibling; raw per-repeat results are in each run's "
+                        "'repeats' list.",
         "placement_stable_across_bandwidth_sweep": placement_stable,
         "runs": runs,
         "exported_traces": {
@@ -642,10 +726,20 @@ def scenario_s10(ctx, out_dir: str) -> Dict[str, Any]:
            execution_mode="hybrid", max_new_tokens=10)
 
     # E2 — Same tiny budget in weight_transfer mode, which *must* land
-    # top-k experts in HBM to compute at all. This is the stress test for
-    # the "Pinned Active Set" guard against intra-layer mutual eviction.
+    # top-k experts in HBM to compute at all. This layer's top-k active
+    # set is (with a short prompt) effectively all 4 experts, i.e. 4 x
+    # 16.5 MiB = 66 MiB pinned — genuinely larger than the 50 MB budget,
+    # so this is EXPECTED to fail: it's the stress test that confirms the
+    # pinned-set-vs-capacity guard in make_room() (memtier_moe/cache/
+    # lfu_cache.py) fires with an actionable message naming both numbers,
+    # rather than eviction silently under-delivering into a generic
+    # "HBM pool out of memory" two frames later. Minimum viable
+    # weight_transfer budget for this model is ~70 MB.
     record("e2_tiny_budget_weight_transfer",
-           "50MB HBM budget in weight_transfer mode — probes top-k eviction pinning.",
+           "50MB HBM budget in weight_transfer mode — the layer's top-k active set "
+           "(~66 MiB) cannot fit and must be pinned all at once, so this must fail with "
+           "make_room()'s actionable pinned-set-vs-capacity error, not a generic OOM.",
+           expect_fail=True,
            prompt=ctx.prompt, hbm_mb=50, dram_mb=1500, cxl_mb=1500,
            execution_mode="weight_transfer", max_new_tokens=10)
 
@@ -786,14 +880,19 @@ def scenario_s10(ctx, out_dir: str) -> Dict[str, Any]:
             torch.cuda.synchronize()
         final_mb = torch.cuda.memory_allocated() / 1e6 if torch.cuda.is_available() else 0.0
         growth_mb = final_mb - baseline_mb
-        e10["status"] = "PASS"
+        leak_suspected = bool(growth_mb > 100.0)
+        # This used to hardcode PASS regardless of leak_suspected, so a real
+        # ~624 MB/5-cycle leak on the committed GPU run was reported as a
+        # passing case. "No exception was thrown" and "no leak was found"
+        # are different claims; only report PASS when both hold.
+        e10["status"] = "FAIL" if leak_suspected else "PASS"
         e10["result"] = {
             "baseline_allocated_mb": round(baseline_mb, 1),
             "final_allocated_mb": round(final_mb, 1),
             "growth_mb": round(growth_mb, 1),
-            # A whole expert is ~13MB, so >100MB of growth over 5 cycles
-            # means real leakage rather than allocator noise.
-            "leak_suspected": bool(growth_mb > 100.0),
+            # A whole expert is ~16.5 MiB, so >100MB of growth over 5
+            # cycles means real leakage rather than allocator noise.
+            "leak_suspected": leak_suspected,
         }
     except Exception as e:
         e10["status"] = "FAIL"
@@ -849,7 +948,13 @@ class _Ctx:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the MemTier-MoE GPU scenario suite")
     parser.add_argument("--scenario", default="all", choices=list(SCENARIOS.keys()) + ["all"])
-    parser.add_argument("--model-id", default=DEFAULT_MODEL_ID, help="Override for S8 scale validation on a bigger GPU")
+    parser.add_argument(
+        "--model-id", default=None,
+        help="HF hub id or local path. Defaults to models/Qwen1.5-4x0.5B-Chat-MoE (see "
+             "scripts/build_chat_moe.py) if present. There is deliberately no fallback to a "
+             "hub model here: Qwen/Qwen1.5-MoE-A2.7B is 26.68 GB in fp16 and does not fit a "
+             "6 GB card — pass it explicitly for S8 scale validation on an A100/L40S.",
+    )
     parser.add_argument("--trace", default=DEFAULT_TRACE)
     parser.add_argument("--tokens", type=int, default=25, help="max_new_tokens for single-shot scenarios (S1-S4, S7)")
     parser.add_argument("--out-dir", default=RESULTS_DIR)
@@ -861,10 +966,28 @@ def main() -> None:
         except Exception:
             pass
 
+    if args.model_id is None:
+        if not os.path.exists(LOCAL_CHAT_MOE):
+            parser.error(
+                f"--model-id was not given and the default local model is missing: "
+                f"{LOCAL_CHAT_MOE}\nBuild it with:\n"
+                f"    python scripts/build_chat_moe.py\n"
+                f"or pass --model-id explicitly (e.g. a HF hub id for S8 scale validation "
+                f"on a bigger GPU — Qwen/Qwen1.5-MoE-A2.7B is 26.68 GB in fp16, too large "
+                f"for a 6 GB card)."
+            )
+        args.model_id = LOCAL_CHAT_MOE
+
     to_run = list(SCENARIOS.keys()) if args.scenario == "all" else [args.scenario]
 
     resources = load_resources(args.model_id, args.trace)
     ctx = _Ctx(resources, DEFAULT_PROMPT, args.tokens)
+
+    # Record a stable identifier rather than args.model_id verbatim: a local
+    # path is normalized to its basename (an absolute Windows path like
+    # C:\Users\<name>\... has no business in a committed results file), a
+    # hub id is kept as-is.
+    model_label = os.path.basename(os.path.normpath(args.model_id)) if os.path.exists(args.model_id) else args.model_id
 
     suite_start = time.perf_counter()
     for scenario_id in to_run:
@@ -873,7 +996,7 @@ def main() -> None:
         fn = SCENARIOS[scenario_id]
         payload = fn(ctx, args.out_dir)
         payload["elapsed_seconds"] = round(time.perf_counter() - t0, 2)
-        payload["model_id"] = args.model_id
+        payload["model_id"] = model_label
         _save(scenario_id, payload, args.out_dir)
         print(f"  -> {scenario_id} done in {payload['elapsed_seconds']:.1f}s")
 

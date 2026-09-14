@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Kicker } from './Kicker';
 import { CommandBlock } from './CommandBlock';
@@ -14,20 +13,20 @@ export function Install() {
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] lg:gap-20">
           <div>
             <Kicker as="p" className="text-ink/45">
-              04 — Install
+              07 — Install
             </Kicker>
             <h2
               id="install-title"
-              className="mt-5 max-w-[14ch] font-display text-[clamp(2.75rem,6vw,5.25rem)] leading-[0.9] text-ink">
-              
-              Two Lines. <span className="italic">Ship It.</span>
+              className="mt-5 max-w-[16ch] font-display text-[clamp(2.75rem,6vw,5.25rem)] leading-[0.9] text-ink">
+
+              Clone It. <span className="italic">Run It Yourself.</span>
             </h2>
             <div className="mt-9 flex flex-wrap items-center gap-4">
               <CommandBlock command={installCommand} />
               <SwatchChips colors={['#141414', '#e5b52f', '#77784f']} width={18} />
             </div>
             <Kicker as="p" className="mt-5 text-ink/40">
-              Python 3.10+ · Torch 2.4+ · No serving-stack fork
+              Python 3.10+ · Torch 2.1+ · Not on PyPI yet
             </Kicker>
           </div>
 

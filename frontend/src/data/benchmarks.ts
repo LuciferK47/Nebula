@@ -1,78 +1,58 @@
-import type { BenchBar, BenchStat, Mechanism } from '../types/content';
+import type { Mechanism } from '../types/content';
 
-export const benchStats: BenchStat[] = [
-{
-  value: '94.2%',
-  label: 'Hot-tier hit rate',
-  baseline: 'Offline Belady oracle: 91.7%'
-},
-{
-  value: '1.84×',
-  label: 'Decode throughput',
-  baseline: 'vs. HBM-only offload at equal memory'
-},
-{
-  value: '0.9 ms',
-  label: 'p99 expert-fault stall',
-  baseline: 'Down from 14.3 ms unprefetched'
-},
-{
-  value: '61%',
-  label: 'Less HBM per replica',
-  baseline: 'Mixtral 8x7B served from 24 GB'
-}];
+// The stat cards and the throughput bars are NOT hardcoded here — they are
+// derived at render time in the Benchmark component from
+// src/lib/results.ts, which reads the actual synced JSON. That is
+// deliberate: a hand-typed number is exactly how this page ended up with
+// "94.2% hit rate" and "1.84x" in an earlier draft, neither of which
+// existed in any measured file.
 
-
-export const benchBars: BenchBar[] = [
-{ name: 'STRATA', tokensPerSecond: 41.6, isSubject: true },
-{ name: 'Belady oracle prefetch', tokensPerSecond: 38.2 },
-{ name: 'LRU tier cache', tokensPerSecond: 26.4 },
-{ name: 'On-demand fetch', tokensPerSecond: 22.6 }];
-
+export const harness = {
+  platform: 'One RTX 4050 Laptop GPU. Nothing exotic.',
+  detail:
+  'Every number on this page was measured on a single NVIDIA GeForce RTX 4050 Laptop GPU ' +
+  '(6.0 GB GDDR6, 96-bit bus), 16 GB host RAM, Windows 11, CUDA 12.4, PyTorch 2.6.0 — the ' +
+  'kind of machine a student or an indie researcher actually owns, not a rented 8-GPU node.'
+};
 
 export const oracleNote =
-'An offline oracle maximises hit rate. It does not schedule transfers. STRATA trades away “perfect” hits to keep the CXL link saturated ahead of the router — so the hits it does take never land in the critical path.';
+'Hybrid mode doesn’t beat weight-swapping by fetching faster — it beats it by not fetching ' +
+'the 16.5 MB expert at all. A cold expert’s activation (a few KB) goes to the CPU, gets computed ' +
+'there, and comes back. The weight never moves, so there is nothing to evict and nothing to wait on.';
 
 export const mechanisms: Mechanism[] = [
 {
-  n: '1',
-  title: 'Router logit lookahead',
-  body: 'Read the gate before it commits. Layer N activations predict layer N+1 top-k selection at 96.4% recall.'
+  n: '01',
+  title: 'Three real tiers, one emulated link',
+  body: 'HBM and DRAM are physically measured: real CUDA async DMA, real CPU compute, real overlap timing via CUDA events. Only the CXL tier is software-emulated — there is no CXL hardware attached.'
 },
 {
-  n: '2',
-  title: 'Tier-aware admission',
-  body: 'An expert enters HBM only when its predicted reuse outlives the transfer it would displace.'
+  n: '02',
+  title: 'A sensitivity sweep instead of a simulator',
+  body: 'Rather than validate the CXL model against DRAMSim3/gem5, we swept its bandwidth assumption 4–64 GB/s and disabled emulation entirely. Placement never changed. That bounds sensitivity to the whole plausible range, not one simulator’s assumptions.'
 },
 {
-  n: '3',
-  title: 'Speculative promotion',
-  body: 'The top two runners-up move alongside the winners. A wrong guess costs bandwidth, never correctness.'
+  n: '03',
+  title: 'Activation offload, not weight swapping',
+  body: 'When an expert is cold, hybrid mode ships its activation to the CPU and computes there — instead of promoting the 16.5 MB expert into HBM and evicting something else to make room.'
 },
 {
-  n: '4',
-  title: 'Bandwidth-scheduled transfer',
-  body: 'Promotions queue against measured CXL headroom, so prefetch never contends with activation traffic.'
+  n: '04',
+  title: 'Decayed-LFU eviction with pinning',
+  body: 'Expert popularity decays over time so the cache adapts to a shifting routing distribution, and a layer’s active top-k experts are pinned against mutual eviction while they’re needed.'
 },
 {
-  n: '5',
-  title: 'Decay-based demotion',
-  body: 'Residency is a half-life, not an LRU stack. A regime change drains the hot tier in two decode steps.'
+  n: '05',
+  title: 'Router-predictive prefetching',
+  body: 'The next layer’s gate is peeked before it is needed, and a speculative fetch is issued for experts the router is likely to pick — gated adaptively so it doesn’t thrash a tight budget.'
 },
 {
-  n: '6',
-  title: 'Zero-copy CXL mapping',
-  body: 'Warm experts are mapped, not copied. The GPU walks a descriptor table the host never rewrites.'
+  n: '06',
+  title: 'A dedicated transfer stream',
+  body: 'DRAM→HBM copies run on their own CUDA stream, separate from the compute stream, so a prefetch can genuinely overlap with the current layer’s FFN instead of serializing behind it.'
 },
 {
-  n: '7',
-  title: 'Fault-path fallback',
-  body: 'A true miss executes in place from the warm tier. The cost is 2.1 µs, not a host page fault.'
+  n: '07',
+  title: 'Edge cases, reported honestly',
+  body: 'A 10-case robustness suite deliberately tries to break the system — degenerate budgets, VRAM over-commit, prefetch abuse. It has already found and fixed two real bugs; see “What we found” below.'
 }];
-
-
-export const harness = {
-  platform: 'Astera Labs Interop Lab reference platform',
-  detail:
-  '8× H100 SXM · Leo CXL 3.1 memory controller · 2 TB attached DRAM · Scorpio PCIe 6 fabric switch · 512 concurrent decode streams · ShareGPT + LMSYS-Chat routing traces, 40k prompts, three seeds.'
-};

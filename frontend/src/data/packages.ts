@@ -1,29 +1,42 @@
 import type { PackageCard } from '../types/content';
 
-export const installCommand = 'pip install strata-moe';
+// The real package (pyproject.toml: name = "memtier-moe") is not published
+// to PyPI — there is no "pip install memtier-moe" today. The previous
+// copy invented "strata-moe" and two sibling packages that don't exist.
+// This is the actual setup from Nebula/Readme.md.
+
+export const installCommand = 'git clone https://github.com/LuciferK47/Nebula.git && cd Nebula && uv pip install -e .';
 
 export const packages: PackageCard[] = [
 {
-  name: 'strata.residency',
-  command: 'pip install strata-moe',
-  blurb: 'The tiered residency manager and the MoE block wrapper. Two lines at your model definition.'
+  name: 'memtier_moe',
+  command: 'uv pip install -e .',
+  blurb: 'The tier manager, LFU cache, transfer engine and TieredMoEWrapper — everything under memtier_moe/. Editable install from source; not on PyPI.'
 },
 {
-  name: 'strata.cxl',
-  command: 'pip install strata-moe[cxl]',
-  blurb: 'Zero-copy CXL 3.1 mapping backend. Falls back to PCIe peer-to-peer where no host controller is present.'
+  name: 'scripts/run_scenarios.py',
+  command: 'python scripts/run_scenarios.py --scenario all',
+  blurb: 'The scenario suite behind every chart on this page — capacity sweeps, mode ablation, CXL sensitivity, and a 10-case edge-case probe.'
 },
 {
-  name: 'strata.bench',
-  command: 'pip install strata-bench',
-  blurb: 'The harness, the Belady oracle baseline, and every trace behind the numbers on this page.'
+  name: 'scripts/serve.py',
+  command: 'python scripts/serve.py',
+  blurb: 'The API this page talks to when it can reach a GPU: /api/run, /api/compare, /api/historical_results.'
 }];
 
+export const usageSnippet = `from memtier_moe.core.config import MemTierConfig
+from memtier_moe.runtime.tiered_model import TieredMoEWrapper
 
-export const usageSnippet = `from strata import TieredResidency
+config = MemTierConfig(
+    hbm_cache_budget_bytes=600 * 1024**2,   # the "expert cache budget"
+    host_dram_bytes=1500 * 1024**2,
+    cxl_memory_bytes=1500 * 1024**2,
+)
 
-model.layers.mlp = TieredResidency.wrap(
-    model.layers.mlp,
-    tiers=("hbm", "cxl", "nvme"),
-    lookahead=2,
-)`;
+wrapper = TieredMoEWrapper(
+    model=base_model,               # any HF MoE model
+    config=config,
+    execution_mode="hybrid",        # activation offload, not weight swap
+)
+
+output_ids = wrapper.generate(**inputs, max_new_tokens=25)`;

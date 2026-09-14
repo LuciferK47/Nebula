@@ -1,39 +1,34 @@
-import React from 'react';
+import { LiveModeProvider } from './lib/useLiveMode';
 import { TopBar } from './components/TopBar';
 import { Hero } from './components/Hero';
-import { ValidatedOn } from './components/ValidatedOn';
 import { Solved } from './components/Solved';
 import { FabricBand } from './components/FabricBand';
 import { Architecture } from './components/Architecture';
+import { ChipExplorer } from './components/explorer/ChipExplorer';
 import { Benchmark } from './components/Benchmark';
+import { Limits } from './components/Limits';
+import { LiveLab } from './components/LiveLab';
 import { Install } from './components/Install';
-import { FieldNotes } from './components/FieldNotes';
-import { Personas } from './components/Personas';
 import { SiteFooter } from './components/SiteFooter';
 
-interface AppProps {
-  /** The submission ticker above the nav. Off for a neutral, non-competition read. */
-  showTicker?: boolean;
-  /** Pilot-deployment quote wall. Off when only the measured results should speak. */
-  showFieldNotes?: boolean;
-}
-
-export function App({ showTicker = true, showFieldNotes = true }: AppProps) {
+export function App() {
   return (
-    <div className="w-full bg-cream">
-      <TopBar showTicker={showTicker} />
-      <main>
-        <Hero />
-        <ValidatedOn />
-        <Solved />
-        <FabricBand />
-        <Architecture />
-        <Benchmark />
-        <Install />
-        {showFieldNotes && <FieldNotes />}
-        <Personas />
-      </main>
-      <SiteFooter />
-    </div>);
+    <LiveModeProvider>
+      <div className="w-full bg-cream">
+        <TopBar />
+        <main>
+          <Hero />
+          <Solved />
+          <FabricBand />
+          <Architecture />
+          <ChipExplorer />
+          <Benchmark />
+          <Limits />
+          <LiveLab />
+          <Install />
+        </main>
+        <SiteFooter />
+      </div>
+    </LiveModeProvider>);
 
 }
