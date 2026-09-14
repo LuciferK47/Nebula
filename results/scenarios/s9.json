@@ -1,0 +1,24 @@
+{
+  "scenario": "s9_overlap_proof",
+  "status": "FAIL",
+  "timing_ms": {
+    "compute_alone_ms": 14.754816055297852,
+    "transfer_alone_ms": 7.336415767669678,
+    "serial_expected_ms": 22.09123182296753,
+    "overlapped_ms": 20.598783493041992,
+    "overlap_speedup": 1.0724532266883462,
+    "hidden_latency_ms": 1.492448329925537
+  },
+  "kernel_trace_stats": {
+    "compute_kernel_count": 0,
+    "transfer_kernel_count": 0,
+    "overlapping_pairs": 0,
+    "max_overlap_us": 0.0,
+    "overlap_detected": false
+  },
+  "chrome_trace_path": "results\\scenarios\\s9_overlap_trace.json",
+  "benchmark_mode": "live",
+  "computation_type": "measured",
+  "elapsed_seconds": 0.42,
+  "model_id": "Qwen1.5-4x0.5B-Chat-MoE"
+}

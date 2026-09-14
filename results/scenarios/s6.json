@@ -1,0 +1,56 @@
+{
+  "scenario": "s6_correctness_vs_full_vram",
+  "description": "Stricter than an elementwise token-id comparison: exact-prefix-match length and first-divergence index catch a single early wrong token instead of averaging it away across a long generation; max_abs_logit_delta bounds numerical drift directly.",
+  "hbm_budget_mb": 900,
+  "runs": [
+    {
+      "prompt": "The Mixture of Experts architecture routes tokens through sp",
+      "total_tokens": 38,
+      "exact_prefix_match_length": 38,
+      "first_divergence_index": null,
+      "max_abs_logit_delta": 0.068359375,
+      "has_nan": false,
+      "has_inf": false
+    },
+    {
+      "prompt": "In distributed systems, consensus protocols ensure agreement",
+      "total_tokens": 36,
+      "exact_prefix_match_length": 36,
+      "first_divergence_index": null,
+      "max_abs_logit_delta": 2.4306640625,
+      "has_nan": false,
+      "has_inf": false
+    },
+    {
+      "prompt": "Photosynthesis converts light energy into chemical energy st",
+      "total_tokens": 36,
+      "exact_prefix_match_length": 36,
+      "first_divergence_index": null,
+      "max_abs_logit_delta": 0.5517578125,
+      "has_nan": false,
+      "has_inf": false
+    },
+    {
+      "prompt": "The French Revolution fundamentally altered the political la",
+      "total_tokens": 35,
+      "exact_prefix_match_length": 35,
+      "first_divergence_index": null,
+      "max_abs_logit_delta": 0.19921875,
+      "has_nan": false,
+      "has_inf": false
+    },
+    {
+      "prompt": "def binary_search(arr, target):\n    low, high = 0, len(arr) ",
+      "total_tokens": 47,
+      "exact_prefix_match_length": 47,
+      "first_divergence_index": null,
+      "max_abs_logit_delta": 0.583984375,
+      "has_nan": false,
+      "has_inf": false
+    }
+  ],
+  "benchmark_mode": "live",
+  "computation_type": "measured",
+  "elapsed_seconds": 26.21,
+  "model_id": "Qwen1.5-4x0.5B-Chat-MoE"
+}

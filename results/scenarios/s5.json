@@ -1,0 +1,134 @@
+{
+  "scenario": "s5_long_horizon_stability",
+  "description": "500 tokens at 600MB HBM budget, hybrid mode, 50-token rolling windows.",
+  "num_tokens": 500,
+  "window_size": 50,
+  "cumulative_hit_rate": 0.3702,
+  "cumulative_evictions": 0,
+  "windows": [
+    {
+      "token_range": [
+        0,
+        50
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 7.77
+    },
+    {
+      "token_range": [
+        50,
+        100
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 8.44
+    },
+    {
+      "token_range": [
+        100,
+        150
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 7.28
+    },
+    {
+      "token_range": [
+        150,
+        200
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 6.42
+    },
+    {
+      "token_range": [
+        200,
+        250
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 5.97
+    },
+    {
+      "token_range": [
+        250,
+        300
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 5.79
+    },
+    {
+      "token_range": [
+        300,
+        350
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 5.38
+    },
+    {
+      "token_range": [
+        350,
+        400
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 5.09
+    },
+    {
+      "token_range": [
+        400,
+        450
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 4.78
+    },
+    {
+      "token_range": [
+        450,
+        500
+      ],
+      "hit_rate": 0.0,
+      "hbm_hit_rate": 0.0,
+      "dram_hit_rate": 0.0,
+      "cxl_hit_rate": 0.0,
+      "evictions_in_window": 0,
+      "tokens_per_second": 4.68
+    }
+  ],
+  "benchmark_mode": "live",
+  "computation_type": "measured",
+  "elapsed_seconds": 84.71,
+  "model_id": "Qwen1.5-4x0.5B-Chat-MoE"
+}

@@ -258,6 +258,11 @@ class Qwen14BLiveRunner:
         generated_ids = input_ids.clone()
         t_start = time.perf_counter()
 
+        token_by_token_stats = []
+        prev_hbm = 0
+        prev_dram = 0
+        prev_disk = 0
+
         for step in range(max_new_tokens):
             t_step = time.perf_counter()
             # Embeddings
@@ -275,7 +280,33 @@ class Qwen14BLiveRunner:
             generated_ids = torch.cat([generated_ids, next_token], dim=-1)
             token_str = tokenizer.decode(next_token[0], skip_special_tokens=True)
             step_time = (time.perf_counter() - t_step) * 1000
-            print(f"  [Token {step+1:02d}] '{token_str}' ({step_time:.1f} ms) | HBM Hits: {self.storage.hbm_hits}, DRAM Hits: {self.storage.dram_hits}, Disk: {self.storage.disk_fetches}")
+
+            # Compute strictly consistent per-token deltas for telemetry
+            cur_hbm = self.storage.hbm_hits
+            cur_dram = self.storage.dram_hits
+            cur_disk = self.storage.disk_fetches
+
+            delta_hbm = cur_hbm - prev_hbm
+            delta_dram = cur_dram - prev_dram
+            delta_disk = cur_disk - prev_disk
+
+            token_by_token_stats.append({
+                "token": step + 1,
+                "text": token_str,
+                "latency_ms": round(step_time, 1),
+                "hbm_hits": delta_hbm,
+                "dram_hits": delta_dram,
+                "disk_fetches": delta_disk,
+                "cumulative_hbm_hits": cur_hbm,
+                "cumulative_dram_hits": cur_dram,
+                "cumulative_disk_fetches": cur_disk,
+            })
+
+            prev_hbm = cur_hbm
+            prev_dram = cur_dram
+            prev_disk = cur_disk
+
+            print(f"  [Token {step+1:02d}] '{token_str}' ({step_time:.1f} ms) | HBM Hits: {cur_hbm} (+{delta_hbm}), DRAM Hits: {cur_dram} (+{delta_dram}), Disk: {cur_disk} (+{delta_disk})")
 
         total_time = time.perf_counter() - t_start
         full_text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
@@ -293,16 +324,19 @@ class Qwen14BLiveRunner:
             "hbm_hit_rate": hit_rate,
             "bytes_transferred_pcie": self.storage.bytes_transferred_pcie,
             "mb_transferred_pcie": self.storage.bytes_transferred_pcie / 1e6,
+            "token_by_token_latency_ms": token_by_token_stats,
         }
         return full_text, metrics
 
 
 def main():
+    import json
     parser = argparse.ArgumentParser(description="Real Model Live Inference: Qwen1.5-MoE-A2.7B")
     parser.add_argument("--prompt", type=str, default="Mixture-of-Experts architectures overcome the memory wall by")
     parser.add_argument("--tokens", type=int, default=10)
     parser.add_argument("--hbm-mb", type=int, default=1000)
     parser.add_argument("--dram-mb", type=int, default=2000)
+    parser.add_argument("--output", type=str, default=None, help="Optional output JSON path for telemetry")
     args = parser.parse_args()
 
     print("=" * 80)
@@ -330,6 +364,14 @@ def main():
     print(f"  - On-Demand Disk Fetches:    {metrics['disk_fetches']}")
     print(f"  - Total PCIe Bus Transfer:   {metrics['mb_transferred_pcie']:.1f} MB")
     print("=" * 80)
+
+    if args.output:
+        out_dir = os.path.dirname(args.output)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(metrics, f, indent=2)
+        print(f"Saved live metrics to: {args.output}")
 
 if __name__ == "__main__":
     main()
