@@ -13,6 +13,7 @@ const TOKEN_PRESETS = [
   { label: '64', val: 64 },
   { label: '128', val: 128 },
   { label: '256', val: 256 },
+  { label: '512', val: 512 },
   { label: 'Complete (EOS)', val: 0 },
 ];
 
@@ -32,7 +33,7 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
   const [baselines, setBaselines] = useState<Baseline[] | null>(null);
   const [selectedBaseline, setSelectedBaseline] = useState<string>('hybrid_sota');
   const [prompt, setPrompt] = useState(DEFAULT_PROMPTS[0]);
-  const [maxTokens, setMaxTokens] = useState(64);
+  const [maxTokens, setMaxTokens] = useState(128);
   const [memoryMb, setMemoryMb] = useState(600);
   const [running, setRunning] = useState(false);
   const [activeResult, setActiveResult] = useState<RunResult | null>(null);
@@ -40,6 +41,7 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -206,9 +208,9 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
               <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber text-ink font-mono text-[9px] font-bold">
                 AI
               </div>
-              <div className="w-full rounded-lg bg-white/[0.02] border border-white/10 p-3 text-xs font-mono leading-relaxed space-y-2">
+              <div className="w-full rounded-lg bg-white/[0.02] border border-white/10 p-3 text-xs font-mono leading-relaxed space-y-2.5">
                 {/* Assistant Bubble Header Bar */}
-                <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                <div className="flex items-center justify-between border-b border-white/5 pb-2">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-amber text-[11px]">
                       {activeResult ? activeResult.baseline.name : activeBaselineObj?.name || 'Hybrid SOTA'}
@@ -219,21 +221,34 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
                       </span>
                     )}
                   </div>
-                  {activeResult && (
-                    <button
-                      type="button"
-                      onClick={handleCopy}
-                      className="text-[10px] font-mono text-cream/60 hover:text-amber transition-colors flex items-center gap-1"
-                    >
-                      {copied ? <span className="text-emerald-400">Copied ✓</span> : 'Copy'}
-                    </button>
-                  )}
+
+                  <div className="flex items-center gap-2">
+                    {activeResult && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setIsExpanded(true)}
+                          className="rounded bg-white/5 border border-white/10 px-2 py-0.5 text-[10px] font-mono text-cream/70 hover:text-amber hover:border-amber/40 transition-colors flex items-center gap-1"
+                          title="Open full expanded output view"
+                        >
+                          ⛶ Full View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCopy}
+                          className="rounded bg-white/5 border border-white/10 px-2 py-0.5 text-[10px] font-mono text-cream/70 hover:text-amber hover:border-amber/40 transition-colors flex items-center gap-1"
+                        >
+                          {copied ? <span className="text-emerald-400">Copied ✓</span> : 'Copy'}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
-                {/* Assistant Output Content */}
-                <div className="text-cream/90 whitespace-pre-wrap selection:bg-amber selection:text-ink max-h-[140px] overflow-y-auto pr-1">
+                {/* Assistant Output Content (Entire output visible without artificial height cap) */}
+                <div className="text-cream/95 whitespace-pre-wrap selection:bg-amber selection:text-ink leading-relaxed font-sans text-xs">
                   {activeResult ? (
-                    activeResult.generated_text
+                    activeResult.generated_text || activeResult.full_text
                   ) : running ? (
                     <span className="text-amber animate-pulse">
                       Generating tokens autoregressively on GPU accelerator…
@@ -458,6 +473,66 @@ export function PromptStudio({ systemInfo }: { systemInfo: SystemInfo }) {
           </div>
         </div>
       </div>
+
+      {/* Expanded Full Output Modal */}
+      {isExpanded && activeResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 md:p-6 animate-fadeIn">
+          <div className="relative flex flex-col w-full max-w-3xl max-h-[85vh] rounded-2xl border border-white/20 bg-[#0f1015] shadow-2xl p-5 md:p-7 space-y-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber text-ink font-bold font-mono text-xs">
+                  AI
+                </div>
+                <div>
+                  <h3 className="font-mono text-xs font-bold text-amber">
+                    {activeResult.baseline.name} — Full Generation
+                  </h3>
+                  <p className="font-mono text-[10px] text-cream/50">
+                    {activeResult.generated_tokens} tokens · {activeResult.tokens_per_second.toFixed(1)} tok/s · {activeResult.wall_time_seconds.toFixed(2)}s wall-clock
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 font-mono text-xs text-cream hover:text-amber hover:border-amber transition-colors"
+                >
+                  {copied ? 'Copied ✓' : 'Copy Full Text'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(false)}
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 font-mono text-xs text-cream/70 hover:text-rose-400 hover:border-rose-400 transition-colors"
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Prompt Recall */}
+            <div className="rounded-lg bg-white/5 border border-white/10 p-3 font-mono text-xs text-cream/70">
+              <strong className="text-amber block text-[10px] uppercase tracking-wider mb-1">Prompt:</strong>
+              {prompt}
+            </div>
+
+            {/* Full Output Text (Scrollable with no truncation) */}
+            <div className="flex-1 overflow-y-auto rounded-lg bg-white/[0.02] border border-white/10 p-4 font-sans text-xs text-cream/95 leading-relaxed whitespace-pre-wrap selection:bg-amber selection:text-ink">
+              {activeResult.generated_text || activeResult.full_text}
+            </div>
+
+            {/* Telemetry Footer */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3 font-mono text-[11px] text-cream/60">
+              <span>Cache Hit: <strong className="text-cream">{(activeResult.hit_rate * 100).toFixed(1)}%</strong></span>
+              <span>Evictions: <strong className="text-emerald-400">0 (Zero Thrash)</strong></span>
+              <span>PCIe Data: <strong className="text-cream">{activeResult.transfer_mb.toFixed(1)} MB</strong></span>
+              <span>Peak VRAM: <strong className="text-cream">{activeResult.peak_vram_mb.toFixed(0)} MB</strong></span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -160,35 +160,24 @@ export function TierPlates({
               </group>
             )}
 
-            {/* Small Subtle Side Tag (Small size, expands on hover) */}
-            <Html
-              position={[-PLATE_WIDTH / 2 - 0.7, 0.1, 0]}
-              center
-              style={{ pointerEvents: 'none' }}
-            >
-              <div
-                className="whitespace-nowrap rounded px-2 py-0.5 font-mono text-[9px] font-semibold transition-all"
-                style={{
-                  backgroundColor: isHovered ? 'rgba(15, 15, 18, 0.95)' : 'rgba(20, 20, 24, 0.7)',
-                  border: `1px solid ${TIER_COLOR[tier]}${isHovered ? 'aa' : '44'}`,
-                  color: TIER_COLOR[tier],
-                  boxShadow: isHovered ? `0 0 12px ${TIER_COLOR[tier]}33` : 'none',
-                }}
-              >
-                {spec.name}
-              </div>
-            </Html>
-
-            {/* Detailed Hover Inspection Popup */}
+            {/* Detailed Hover Inspection Card (Visible ONLY on hover) */}
             {isHovered && !dimmed && (
               <Html
                 position={[0, 0.75, 0]}
                 center
                 style={{ pointerEvents: 'none' }}
               >
-                <div className="whitespace-nowrap rounded-lg bg-[#0c0d10]/95 px-3 py-2 font-mono text-xs text-cream shadow-2xl border border-ink-line">
-                  <div className="font-bold text-amber text-xs">{spec.subtitle}</div>
-                  <div className="text-cream/70 text-[10px] mt-0.5">{spec.type}</div>
+                <div
+                  className="whitespace-nowrap rounded-lg bg-[#0c0d10]/95 px-3 py-2 font-mono text-xs text-cream shadow-2xl border transition-all"
+                  style={{ borderColor: `${TIER_COLOR[tier]}88`, boxShadow: `0 0 20px ${TIER_COLOR[tier]}33` }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TIER_COLOR[tier] }} />
+                    <span className="font-bold text-xs" style={{ color: TIER_COLOR[tier] }}>{spec.name}</span>
+                    <span className="text-white/40">·</span>
+                    <span className="text-cream/80 text-[11px]">{spec.subtitle}</span>
+                  </div>
+                  <div className="text-cream/70 text-[10px] mt-1">{spec.type}</div>
                   <div className="mt-1.5 flex gap-4 text-[10px] text-cream/60 border-t border-white/10 pt-1">
                     <span>
                       Bandwidth: <strong className="text-cream">{spec.bw}</strong>

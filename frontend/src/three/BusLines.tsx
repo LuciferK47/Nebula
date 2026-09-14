@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
@@ -18,6 +18,7 @@ export function BusLines({ explode }: BusLinesProps) {
   const scale = 1 + explode * 0.9;
   const pciePacketRef = useRef<THREE.Mesh>(null!);
   const cxlPacketRef = useRef<THREE.Mesh>(null!);
+  const [hoveredBus, setHoveredBus] = useState<'pcie' | 'cxl' | null>(null);
 
   // Bus pillar coordinates (Left and Right pillars)
   const pillars = useMemo(
@@ -85,45 +86,65 @@ export function BusLines({ explode }: BusLinesProps) {
       })}
 
       {/* Animated PCIe Packet (Amber) traversing between HBM and DRAM */}
-      <mesh ref={pciePacketRef} position={[-4.8, (hbmY + dramY) / 2, -3.8]}>
-        <sphereGeometry args={[0.16, 16, 16]} />
+      <mesh
+        ref={pciePacketRef}
+        position={[-4.8, (hbmY + dramY) / 2, -3.8]}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHoveredBus('pcie');
+        }}
+        onPointerOut={() => setHoveredBus(null)}
+      >
+        <sphereGeometry args={[0.18, 16, 16]} />
         <meshStandardMaterial
           color="#e5b52f"
           emissive="#e5b52f"
-          emissiveIntensity={0.8}
+          emissiveIntensity={0.9}
         />
       </mesh>
 
       {/* Animated CXL Packet (Cold Cyan/Slate) traversing between DRAM and CXL */}
-      <mesh ref={cxlPacketRef} position={[4.8, (dramY + cxlY) / 2, -3.8]}>
-        <sphereGeometry args={[0.16, 16, 16]} />
+      <mesh
+        ref={cxlPacketRef}
+        position={[4.8, (dramY + cxlY) / 2, -3.8]}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHoveredBus('cxl');
+        }}
+        onPointerOut={() => setHoveredBus(null)}
+      >
+        <sphereGeometry args={[0.18, 16, 16]} />
         <meshStandardMaterial
           color="#8fa3b8"
           emissive="#8fa3b8"
-          emissiveIntensity={0.8}
+          emissiveIntensity={0.9}
         />
       </mesh>
 
-      {/* Bus Labels */}
-      <Html
-        position={[-5.6, (hbmY + dramY) / 2, -3.8]}
-        center
-        style={{ pointerEvents: 'none' }}
-      >
-        <div className="whitespace-nowrap rounded-md bg-ink/90 px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider text-amber border border-amber/30">
-          PCIe Gen5 x16 (64 GB/s)
-        </div>
-      </Html>
+      {/* Bus Labels (Visible ONLY on hover) */}
+      {hoveredBus === 'pcie' && (
+        <Html
+          position={[-5.6, (hbmY + dramY) / 2, -3.8]}
+          center
+          style={{ pointerEvents: 'none' }}
+        >
+          <div className="whitespace-nowrap rounded-md bg-ink/95 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-amber border border-amber/40 shadow-xl">
+            PCIe Gen5 x16 (64 GB/s Interconnect)
+          </div>
+        </Html>
+      )}
 
-      <Html
-        position={[5.6, (dramY + cxlY) / 2, -3.8]}
-        center
-        style={{ pointerEvents: 'none' }}
-      >
-        <div className="whitespace-nowrap rounded-md bg-ink/90 px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider text-cold border border-cold/30">
-          CXL 3.0 Coherent Fabric
-        </div>
-      </Html>
+      {hoveredBus === 'cxl' && (
+        <Html
+          position={[5.6, (dramY + cxlY) / 2, -3.8]}
+          center
+          style={{ pointerEvents: 'none' }}
+        >
+          <div className="whitespace-nowrap rounded-md bg-ink/95 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-cold border border-cold/40 shadow-xl">
+            CXL 3.0 Coherent Memory Fabric (8–32 GB/s)
+          </div>
+        </Html>
+      )}
     </group>
   );
 }

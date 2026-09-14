@@ -78,17 +78,6 @@ export function SubstratePackage({ explode }: SubstratePackageProps) {
           </div>
         </Html>
       )}
-
-      {/* Label */}
-      <Html
-        position={[-substrateW / 2 - 0.7, -0.05, 0]}
-        center
-        style={{ pointerEvents: 'none' }}
-      >
-        <div className="rounded-full bg-ink/90 px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider text-khaki/70 border border-white/10">
-          Package Substrate
-        </div>
-      </Html>
     </group>
   );
 }

@@ -167,17 +167,6 @@ export function ComputeDie({ explode }: ComputeDieProps) {
           </div>
         </Html>
       )}
-
-      {/* Overall Layer Label */}
-      <Html
-        position={[0, dieH + 0.45, -dieD / 2 - 0.3]}
-        center
-        style={{ pointerEvents: 'none' }}
-      >
-        <div className="rounded-full bg-ink/90 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-cream border border-white/10 backdrop-blur-sm">
-          Compute Layer
-        </div>
-      </Html>
     </group>
   );
 }

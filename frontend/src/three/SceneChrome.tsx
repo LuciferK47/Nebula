@@ -2,10 +2,26 @@
 export function SceneLights() {
   return (
     <>
-      <hemisphereLight args={['#f4f3ed', '#141414', 0.65]} />
-      <directionalLight position={[9, 14, 8]} intensity={1.2} />
-      <directionalLight position={[-8, 6, -9]} intensity={0.45} color="#8fa3b8" />
-      <pointLight position={[0, 7, 0]} intensity={0.4} color="#e5b52f" distance={12} />
+      {/* Base uniform ambient light for clear geometry visibility */}
+      <ambientLight intensity={0.9} color="#ffffff" />
+
+      {/* Hemisphere light providing natural sky/ground contrast */}
+      <hemisphereLight args={['#ffffff', '#18181f', 0.8]} />
+
+      {/* Primary Key Directional Studio Light */}
+      <directionalLight position={[10, 18, 12]} intensity={2.2} color="#ffffff" />
+
+      {/* Cool Rim Light highlighting silicon chamfers, gold pins, and heatsink fins */}
+      <directionalLight position={[-12, 12, -10]} intensity={1.5} color="#93c5fd" />
+
+      {/* Dedicated Fill Light for lower tiers (Host DRAM & CXL far memory chassis) */}
+      <pointLight position={[0, -2, 5]} intensity={2.0} color="#e0e7ff" distance={18} />
+
+      {/* Focused Accelerator Spotlight illuminating Compute Die and HBM stacks */}
+      <pointLight position={[0, 6, 3]} intensity={2.2} color="#fef08a" distance={15} />
+
+      {/* Subtle under-chassis bounce light */}
+      <directionalLight position={[0, -8, -6]} intensity={0.75} color="#cbd5e1" />
     </>
   );
 }

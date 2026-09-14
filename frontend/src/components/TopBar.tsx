@@ -46,40 +46,16 @@ export function TopBar() {
             {/* Subtle separator */}
             <div className="h-4 w-px bg-ink/20" />
 
-            {/* Astera Labs Logo (Transparent SVG without background) */}
+            {/* Official Astera Labs Logo */}
             <div
-              className="flex items-center gap-1.5 group cursor-pointer"
+              className="flex items-center group cursor-pointer"
               title="Astera Labs · PCIe & CXL Connectivity Architecture"
             >
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 32 32"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="transition-transform group-hover:scale-105"
-              >
-                {/* Stylized interconnected diamond constellation mark for Astera Labs */}
-                <path
-                  d="M16 3L28 25H4L16 3Z"
-                  stroke="#141414"
-                  strokeWidth="2.2"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M16 11L22 22H10L16 11Z"
-                  fill="#0284c7"
-                  stroke="#0284c7"
-                  strokeWidth="1.2"
-                />
-                <circle cx="16" cy="3" r="2.2" fill="#0ea5e9" />
-                <circle cx="4" cy="25" r="2.2" fill="#0ea5e9" />
-                <circle cx="28" cy="25" r="2.2" fill="#0ea5e9" />
-                <circle cx="16" cy="17" r="1.8" fill="#ffffff" />
-              </svg>
-              <span className="font-mono text-10 font-bold tracking-widest uppercase text-ink/80 group-hover:text-ink transition-colors">
-                Astera Labs
-              </span>
+              <img
+                src="/astera-labs-logo.png"
+                alt="Astera Labs"
+                className="h-6 w-auto object-contain transition-transform group-hover:scale-105"
+              />
             </div>
           </div>
 

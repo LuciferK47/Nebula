@@ -82,37 +82,6 @@ export function TraceDemo3D({ explode, activeStep, isPlaying }: TraceDemo3DProps
           />
         </mesh>
       </group>
-
-      {/* Floating 3D Telemetry Tooltip on Active Hardware Layer */}
-      <Html position={[3.2, targetY + 0.4, 0]} center style={{ pointerEvents: 'none' }}>
-        <div
-          className="whitespace-nowrap rounded-lg px-2.5 py-1.5 font-mono text-[10px] shadow-2xl backdrop-blur transition-all duration-200 border"
-          style={{
-            backgroundColor: 'rgba(10, 11, 15, 0.95)',
-            borderColor: `${tierColor}aa`,
-            boxShadow: `0 0 16px ${tierColor}44`,
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className="h-2 w-2 rounded-full animate-ping"
-              style={{ backgroundColor: tierColor }}
-            />
-            <strong className="font-bold" style={{ color: tierColor }}>
-              {event.tierName.toUpperCase()}
-            </strong>
-            <span className="text-white/60">·</span>
-            <span className="text-cream font-semibold">{event.accessType}</span>
-            <span className="rounded bg-white/10 px-1 py-0.2 text-[9px] text-cream/90">
-              {event.sizeFormatted}
-            </span>
-          </div>
-          <div className="mt-1 flex items-center justify-between gap-3 text-[9px] text-cream/60 border-t border-white/10 pt-1">
-            <span>Addr: <code className="text-white/80">{event.addressHex.slice(0, 8)}…</code></span>
-            <span className="font-semibold text-emerald-400">{event.latency}</span>
-          </div>
-        </div>
-      </Html>
     </group>
   );
 }
