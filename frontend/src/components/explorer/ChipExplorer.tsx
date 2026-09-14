@@ -62,12 +62,12 @@ export function ChipExplorer() {
   }, [inView, use2D]);
 
   return (
-    <section id="explorer" className="on-ink bg-ink py-20 md:py-28" aria-labelledby="explorer-title">
+    <section id="explorer" className="on-ink bg-ink py-14 md:py-20 border-t border-ink-line/60" aria-labelledby="explorer-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Kicker as="p" className="text-amber">
-              03 — Explorer
+              02 — Interactive Hierarchy
             </Kicker>
             <h2
               id="explorer-title"

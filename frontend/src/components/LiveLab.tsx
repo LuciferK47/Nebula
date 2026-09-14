@@ -14,10 +14,10 @@ export function LiveLab() {
   const state = useLiveMode();
 
   return (
-    <section id="live-lab" className="on-ink bg-ink py-20 md:py-28" aria-labelledby="live-lab-title">
+    <section id="live-lab" className="on-ink bg-ink py-14 md:py-20 border-t border-ink-line/60" aria-labelledby="live-lab-title">
       <div className="mx-auto max-w-site px-5 md:px-8">
         <Kicker as="p" className="text-amber">
-          06 — Live
+          05 — Live GPU Inference
         </Kicker>
         <h2
           id="live-lab-title"

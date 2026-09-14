@@ -1,8 +1,6 @@
 import { LiveModeProvider } from './lib/useLiveMode';
 import { TopBar } from './components/TopBar';
 import { Hero } from './components/Hero';
-import { Solved } from './components/Solved';
-import { FabricBand } from './components/FabricBand';
 import { Architecture } from './components/Architecture';
 import { ChipExplorer } from './components/explorer/ChipExplorer';
 import { Benchmark } from './components/Benchmark';
@@ -18,8 +16,6 @@ export function App() {
         <TopBar />
         <main>
           <Hero />
-          <Solved />
-          <FabricBand />
           <Architecture />
           <ChipExplorer />
           <Benchmark />
@@ -29,6 +25,6 @@ export function App() {
         </main>
         <SiteFooter />
       </div>
-    </LiveModeProvider>);
-
+    </LiveModeProvider>
+  );
 }
