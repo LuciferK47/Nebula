@@ -52,7 +52,7 @@ export function TopBar() {
               title="Astera Labs · PCIe & CXL Connectivity Architecture"
             >
               <img
-                src="/astera-labs-logo.png"
+                src={`${import.meta.env.BASE_URL}astera-labs-logo.png`}
                 alt="Astera Labs"
                 className="h-6 w-auto object-contain transition-transform group-hover:scale-105"
               />
