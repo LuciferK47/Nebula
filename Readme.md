@@ -19,11 +19,6 @@ An open-source runtime engine and architectural research framework designed to b
 
 MemTier-MoE includes **Nebula**, an interactive web presentation and hardware evaluation studio:
 
-- **Interactive 3D Chiplet & Hierarchy Explorer**: Exploded 3D view of the physical substrate, compute die, HBM/GDDR stacks, host DRAM channels, and CXL daughtercards with slowed-down hardware trace replay.
-- **Empirical Benchmark Dashboard**: Interactive charts for Crossover Advantage (S2), Capacity Cliff (S1), Batch Scaling & Thrashing Collapse (S7), and Qwen warmup dynamics.
-- **Live Hardware Inference Studio**: Real-time token streaming with per-token latency/tier telemetry, multi-baseline comparison matrix, and full token inspection.
-- **Sequential Section Navigation**: Smooth down-arrow progression across numbered chapters with a persistent floating dock.
-
 ```bash
 # Launch the full web studio and API backend (single command):
 python scripts/serve.py --port 8000
@@ -185,7 +180,7 @@ Evaluating `Qwen/Qwen1.5-MoE-A2.7B` (14.3B total parameters, 2.7B active per tok
 
 ## Hardware Grounding & Emulation Methodology
 
-To ensure complete scientific transparency:
+To ensure complete transparency:
 
 1. **What is physically measured on hardware**:
    - Transformer forward pass, attention, LayerNorms, routers, and LM head on GPU.
@@ -278,20 +273,4 @@ Nebula/
 ├── tests/                       # Comprehensive pytest suite (125 tests, 100% passing)
 ├── pyproject.toml               # Python packaging & dependencies
 └── README.md                    # Project overview & architectural guide
-```
-
----
-
-## Citation & License
-
-This project is licensed under the **MIT License**. See `LICENSE` for details.
-
-```bibtex
-@article{memtier_moe2026,
-  title={MemTier-MoE: CXL-Aware 3-Tier Memory Hierarchy for Mixture-of-Experts Inference},
-  author={LuciferK47 and Contributors},
-  journal={GitHub Repository},
-  year={2026},
-  url={https://github.com/LuciferK47/Nebula}
-}
 ```

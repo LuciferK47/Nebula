@@ -56,3 +56,7 @@ checkpoints/
 GPU_RUNBOOK.md
 nebula_implementation_plan.md
 
+# Profiler & Local Trace Dumps
+/*_trace.json
+
+
