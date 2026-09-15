@@ -161,7 +161,7 @@ The live inference engine was evaluated on physical hardware using an entry-leve
 
 > [!WARNING]
 > **Superseded by `results/scenarios/s2.json`.** The table below and the newer scenario-suite run
-> (`scripts/run_scenarios.py --scenario s2`, see [GPU_RUNBOOK.md](GPU_RUNBOOK.md)) report different
+> (`scripts/run_scenarios.py --scenario s2`) report different
 > numbers for the same comparison — hybrid @ 600 MB vs. two-tier @ 600 MB is **1.78×** here but **2.76×**
 > in `s2.json` — because they were run against different builds of the expert set (1,276.8 MB of active
 > expert weights here vs. 96 × 17.3 MB = 1,660.8 MB in the scenario suite; this section also names the

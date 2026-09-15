@@ -51,3 +51,8 @@ models/
 checkpoints/
 *.safetensors
 *.bin
+
+# Internal / Private Docs
+GPU_RUNBOOK.md
+nebula_implementation_plan.md
+
