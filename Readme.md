@@ -274,3 +274,48 @@ Nebula/
 ├── pyproject.toml               # Python packaging & dependencies
 └── README.md                    # Project overview & architectural guide
 ```
+
+---
+
+## References
+
+### 1. Mixture-of-Experts & Offloading Systems
+1. **Fiddler (MLSys 2024)**  
+   Ali et al., *"Fiddler: Efficient Inference of Mixture-of-Experts Models on Limited GPU Memory"*, Proceedings of Machine Learning and Systems (MLSys), 2024.  
+
+2. **MoE-Infinity (ASPLOS 2024)**  
+   Elsayed et al., *"MoE-Infinity: Activation-Aware Expert Offloading to Secondary Storage for Large Sparse Models"*, ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS), 2024.  
+
+3. **DeepSpeed-MoE (OSDI 2022)**  
+   Rajbhandari et al., *"DeepSpeed-MoE: Advancing Mixture-of-Experts Inference and Training to Power Next-Generation AI Scale"*, USENIX Symposium on Operating Systems Design and Implementation (OSDI), 2022.  
+
+4. **FasterMoE (PPoPP 2022)**  
+   He et al., *"FasterMoE: Modeling and Optimizing Training and Inference of Large-Scale Mixture-of-Experts on Distributed GPUs"*, ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (PPoPP), 2022.  
+
+5. **Qwen1.5-MoE (2024)**  
+   Qwen Team, Alibaba Group, *"Qwen1.5-MoE: Matching 7B Model Performance with 2.7B Activated Parameters"*, Technical Report, 2024.  
+
+---
+
+### 2. Interconnect & Memory Standards
+6. **Compute Express Link (CXL) Specification (Revs 2.0 & 3.0)**  
+   CXL Consortium, *"Compute Express Link (CXL) Specification: Type 3 Memory Devices and Direct Memory Pools"*, 2020–2023.  
+
+7. **JEDEC HBM3 & HBM3e Standards**  
+   JEDEC Solid State Technology Association, *"High Bandwidth Memory (HBM3/HBM3e) DRAM Standard"*, JESD238 / JESD238A.  
+
+8. **JEDEC DDR5 SDRAM Specification**  
+   JEDEC Solid State Technology Association, *"DDR5 SDRAM Standard"*, JESD79-5C.  
+
+---
+
+### 3. Architecture Simulators & Analytical Models
+9. **DRAMSim3 (IEEE CAL 2020)**  
+   Li et al., *"DRAMSim3: A Cycle-Accurate, Thermal-Capable DRAM Simulator"*, IEEE Computer Architecture Letters, 2020.  
+
+10. **The gem5 Simulator (ACM SIGARCH / IEEE Micro)**  
+    Binkert et al., Lowe-Power et al., *"The gem5 Simulator: Version 20.0+"*, ACM SIGARCH Computer Architecture News / IEEE Micro.  
+
+11. **Roofline Model (CACM 2009)**  
+    Williams, Waterman, & Patterson, *"Roofline: An Insightful Visual Performance Model for Multicore Architectures"*, Communications of the ACM, 2009.  
+
